@@ -1,15 +1,21 @@
-#+TITLE: Side Effects In Clojure and Iteration
+#+TITLE: Idiomatic Clojure: Mixing Side Effects and Iteration
 
 #+OPTIONS: toc:nil num:nil
 #+BEGIN_EXPORT html
 ---
 layout: post
-title: Side Effects In Clojure and Iteration
+title: Idiomatic Clojure: Mixing Side Effects and Iteration
 permalink: /:title/
-tags: [clojure, transducers, side effects, performance]
-categories: [clojure, transducers, side effects]
+tags: [clojure, transducers, side effects, performance, idiomatic clojure]
+categories: [clojure, transducers, side effects, idiomatic clojure]
 ---
 #+END_EXPORT
+
+Clojure is a highly practical language. It's dynamically typed, yet
+immutable, functional, and lazy by default. Unlike strongly typed
+functional languages, it has no formal system for handling side effects,
+making them easy to perform on one hand, but also easy to get wrong by
+mixing up Clojure's idioms.
 
 For programmers coming in from other languages or not used to lazy
 evaluation, Clojure's idioms can come off as unnatural or confusing.
@@ -20,7 +26,7 @@ collections.
 This is an attempt to clear up some of the confusion, point out code
 smells, and suggest alternatives.
 
-It was initially inspired by [[https://clojureverse.org/t/best-concise-idiomatic-way-to-map-for-side-effects][this post]], 
+It was initially inspired by [[https://clojureverse.org/t/best-concise-idiomatic-way-to-map-for-side-effects][this post]],
 then questions and discussions with colleagues.
 
 * ~doall~ Smells Bad
@@ -53,6 +59,22 @@ then questions and discussions with colleagues.
     memory)
   - We need all the results right now (eager evaluation) in which case
     /using a lazy function is wrong/
+
+* Lazyness in the multi-threaded context
+
+  When we create lazy collections and pass them between threads, we lose
+  control over the execution context. We might have allocated a lot of
+  threads on which to do the computation, but since we passed the
+  collection to another thread, it will be executed there.
+
+  In a scenario where many threads pass collections to one, we may
+  accidentally create a bottleneck and under utilize the allocated
+  threads, an all-in-all unfavorable condition.
+
+  The risk is even greater when creating a sequence of the results of a
+  side effectful computation.
+
+  I'll have to go deeper into this in the future.
 
 * The Alternatives
 
@@ -132,6 +154,86 @@ then questions and discussions with colleagues.
      (doseq [x coll]
        (api-call! x))
    #+end_src
+
+* Some benchmarks
+
+  Just to make sure, let's compare the performance of the various
+  methods. Feel free to skip this segment if you're not interested in
+  the performance differences.
+
+  #+begin_src clojure
+    (require '[criterium.core :as cc])
+    (def xs (vec (range 100)))
+    (defn f [x] (* x x))
+    (def xf (map f))
+
+    ;;; The bad way
+
+    (cc/bench (doall (map f xs)))
+    ;;; Evaluation count : 10186800 in 60 samples of 169780 calls.
+    ;;;              Execution time mean : 6.076866 µs
+    ;;;     Execution time std-deviation : 196.621748 ns
+    ;;;    Execution time lower quantile : 5.775623 µs ( 2.5%)
+    ;;;    Execution time upper quantile : 6.383714 µs (97.5%)
+    ;;;                    Overhead used : 2.538093 ns
+
+    (cc/bench (doall (for [x xs] (f x))))
+    ;;; Evaluation count : 12756480 in 60 samples of 212608 calls.
+    ;;;              Execution time mean : 4.829359 µs
+    ;;;     Execution time std-deviation : 117.404269 ns
+    ;;;    Execution time lower quantile : 4.600029 µs ( 2.5%)
+    ;;;    Execution time upper quantile : 5.031585 µs (97.5%)
+    ;;;                    Overhead used : 2.538093 ns
+
+    ;;; Retaining results
+
+    (cc/bench (mapv f xs))
+    ;;; Evaluation count : 16289340 in 60 samples of 271489 calls.
+    ;;;              Execution time mean : 3.762177 µs
+    ;;;     Execution time std-deviation : 88.800651 ns
+    ;;;    Execution time lower quantile : 3.635101 µs ( 2.5%)
+    ;;;    Execution time upper quantile : 3.949551 µs (97.5%)
+    ;;;                    Overhead used : 2.538093 ns
+
+    (cc/bench (into [] xf xs))
+    ;;; Evaluation count : 16619760 in 60 samples of 276996 calls.
+    ;;;              Execution time mean : 3.737071 µs
+    ;;;     Execution time std-deviation : 110.948249 ns
+    ;;;    Execution time lower quantile : 3.583709 µs ( 2.5%)
+    ;;;    Execution time upper quantile : 4.025705 µs (97.5%)
+    ;;;                    Overhead used : 2.538093 ns
+
+    ;;; Discarding results
+
+    (cc/bench (doseq [x xs] (f x)))
+    ;;; Evaluation count : 35039640 in 60 samples of 583994 calls.
+    ;;;              Execution time mean : 1.736715 µs
+    ;;;     Execution time std-deviation : 44.138712 ns
+    ;;;    Execution time lower quantile : 1.669483 µs ( 2.5%)
+    ;;;    Execution time upper quantile : 1.838822 µs (97.5%)
+    ;;;                    Overhead used : 2.538093 ns
+
+    (cc/bench (run! f xs))
+    ;;; Evaluation count : 31278240 in 60 samples of 521304 calls.
+    ;;;              Execution time mean : 1.976677 µs
+    ;;;     Execution time std-deviation : 52.700832 ns
+    ;;;    Execution time lower quantile : 1.898028 µs ( 2.5%)
+    ;;;    Execution time upper quantile : 2.079708 µs (97.5%)
+    ;;;                    Overhead used : 2.538093 ns
+  #+end_src
+
+  #+PLOT: title:"Iteration time" ind:1 deps:(2) file:"../assets/img/iteration.png" type:2d with:histograms set:"yrange [0:]"
+  | Method | time (us) |
+  |--------+-----------|
+  | map    |  6.076866 |
+  | for    |  4.829359 |
+  | mapv   |  3.762177 |
+  | into   |  3.737071 |
+  | doseq  |  1.736715 |
+  | run!   |  1.976677 |
+
+  #+RESULTS:
+  [[file:../assets/img/iteration.png]]
 
 * Summary
 
