@@ -1,0 +1,419 @@
+---
+layout: post
+title: Idiomatic Clojure: Mixing Side Effects and Iteration
+permalink: /:title/
+tags: [clojure, transducers, side effects, performance, idiomatic clojure]
+categories: [clojure, transducers, side effects, idiomatic clojure]
+---
+
+<p>
+Clojure is a highly practical language. It's dynamically typed, yet
+immutable, functional, and lazy by default. Unlike strongly typed
+functional languages, it has no formal system for handling side effects,
+making them easy to perform on one hand, but also easy to get wrong by
+mixing up Clojure's idioms.
+</p>
+
+<p>
+For programmers coming in from other languages or not used to lazy
+evaluation, Clojure's idioms can come off as unnatural or confusing.
+</p>
+
+<p>
+This becomes doubly clear when dealing with mapping side effects over
+collections.
+</p>
+
+<p>
+This is an attempt to clear up some of the confusion, point out code
+smells, and suggest alternatives.
+</p>
+
+<p>
+It was initially inspired by <a href="https://clojureverse.org/t/best-concise-idiomatic-way-to-map-for-side-effects">this post</a>,
+then questions and discussions with colleagues.
+</p>
+
+<div id="outline-container-org9cfefb5" class="outline-2">
+<h2 id="org9cfefb5"><code>doall</code> Smells Bad</h2>
+<div class="outline-text-2" id="text-org9cfefb5">
+<p>
+<code>doall</code> is a macro which realizes lazy sequences. It's not uncommon to
+see an inexperience developer use it to forcefully realize a sequence
+of side effect results, for example:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">doall</span> <span style="color: #6c3163;">(</span>map api-call! coll<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+or
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">doall</span> <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">for</span> <span style="color: #2d9574;">[</span>x xs<span style="color: #2d9574;">]</span> <span style="color: #2d9574;">(</span>api-call x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+This isn't meant to be a criticism, but an attempt to bring attention
+to an incongruity, so hopefully no one takes it harshly:
+</p>
+
+<blockquote>
+<p>
+There is <b>no place</b> for <code>doall</code> in production code
+</p>
+</blockquote>
+
+<p>
+Why?
+</p>
+
+<p>
+Because we either:
+</p>
+<ul class="org-ul">
+<li>Want lazy collections, making <code>doall</code> redundant (and consuming more
+memory)</li>
+<li>We need all the results right now (eager evaluation) in which case
+<i>using a lazy function is wrong</i></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-org8e83cb3" class="outline-2">
+<h2 id="org8e83cb3">Lazyness in the multi-threaded context</h2>
+<div class="outline-text-2" id="text-org8e83cb3">
+<p>
+When we create lazy collections and pass them between threads, we lose
+control over the execution context. We might have allocated a lot of
+threads on which to do the computation, but since we passed the
+collection to another thread, it will be executed there.
+</p>
+
+<p>
+In a scenario where many threads pass collections to one, we may
+accidentally create a bottleneck and under utilize the allocated
+threads, an all-in-all unfavorable condition.
+</p>
+
+<p>
+The risk is even greater when creating a sequence of the results of a
+side effectful computation.
+</p>
+
+<p>
+I'll have to go deeper into this in the future.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org95450c7" class="outline-2">
+<h2 id="org95450c7">The Alternatives</h2>
+<div class="outline-text-2" id="text-org95450c7">
+<p>
+There are several paths towards the same solution, but first we need
+to understand not all solutions are the same. What differentiates them
+the most is whether we need to <b>retain the results</b> of computation.
+</p>
+
+<ul class="org-ul">
+<li>Retain results:
+<ul class="org-ul">
+<li><code>mapv</code></li>
+<li><code>into</code></li>
+<li><code>reduce</code></li>
+<li><code>transduce</code></li>
+</ul></li>
+<li>Don't retain results:
+<ul class="org-ul">
+<li><code>run!</code></li>
+<li><code>doseq</code></li>
+</ul></li>
+<li>Up to you:
+<ul class="org-ul">
+<li><code>loop</code></li>
+</ul></li>
+</ul>
+
+<p>
+Let's take a look at each option and see what it's good for and how do
+use it idiomatically:
+</p>
+</div>
+
+
+<div id="outline-container-orgf7a8386" class="outline-3">
+<h3 id="orgf7a8386">Retaining results</h3>
+<div class="outline-text-3" id="text-orgf7a8386">
+<p>
+The simplest option is to throw out every usage of <code>(doall (map
+   ...))</code> for <code>mapv</code> and call it a day. <code>mapv</code> is eager and will return
+a vector with all the results:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>mapv api-call! coll<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Since <code>mapv</code> is just built on top of <code>reduce</code>, feel free to use
+<code>reduce</code> directly. It gives you slightly better control, but at a
+cost, as <code>mapv</code> uses a transient collection, thus it performs better.
+</p>
+
+<p>
+The best of both worlds, but requiring careful usage, is <code>into</code>.
+Transducers were introduced in Clojure 1.7 and are the
+<a href="https://clojure.org/reference/transducers">greatest thing since sliced bread.</a>
+</p>
+
+<p>
+So be careful and make sure you use the transducing API:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>into <span style="color: #6c3163;">[]</span> <span style="color: #6c3163;">(</span>map api-call!<span style="color: #6c3163;">)</span> coll<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+And <b>not</b>:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Seriously, avoid doing this</span>
+<span style="color: #3a81c3;">(</span>into <span style="color: #6c3163;">[]</span> <span style="color: #6c3163;">(</span>map api-call! coll<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+<code>into</code> also uses transient collections, so that's another win.
+</p>
+
+<p>
+Equivalently, you can use <code>transduce</code> to the same effect:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>transduce <span style="color: #6c3163;">(</span>map api-call!<span style="color: #6c3163;">)</span> conj! <span style="color: #6c3163;">(</span>transient <span style="color: #2d9574;">[]</span><span style="color: #6c3163;">)</span> coll<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org496ab2b" class="outline-3">
+<h3 id="org496ab2b">Discarding Results</h3>
+<div class="outline-text-3" id="text-org496ab2b">
+<p>
+For the simplest case, instead of using <code>map</code>, use <code>run!</code>
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>run! api-call! coll<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+<code>run!</code> returns <code>nil</code> and runs the provided function over the
+collection immediately.
+</p>
+
+<p>
+If you require a more verbose API, <code>doseq</code> is a rich alternative. its
+syntax is equivalent to <code>for</code>'s but it returns nothing:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">doseq</span> <span style="color: #6c3163;">[</span>x coll<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span>api-call! x<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgc470407" class="outline-2">
+<h2 id="orgc470407">Some benchmarks</h2>
+<div class="outline-text-2" id="text-orgc470407">
+<p>
+Just to make sure, let's compare the performance of the various
+methods. Feel free to skip this segment if you're not interested in
+the performance differences.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>require '<span style="color: #6c3163;">[</span>criterium.core <span style="color: #4e3163;">:as</span> cc<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">xs</span> <span style="color: #6c3163;">(</span>vec <span style="color: #2d9574;">(</span>range <span style="color: #4e3163;">100</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">f</span> <span style="color: #6c3163;">[</span>x<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>* x x<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">xf</span> <span style="color: #6c3163;">(</span>map f<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">The bad way</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">doall</span> <span style="color: #2d9574;">(</span>map f xs<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Evaluation count : 10186800 in 60 samples of 169780 calls.</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;              </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 6.076866 &#181;s</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;     </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time std-deviation : 196.621748 ns</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time lower quantile : 5.775623 &#181;s ( 2.5%)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time upper quantile : 6.383714 &#181;s (97.5%)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;                    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Overhead used : 2.538093 ns</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">doall</span> <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">for</span> <span style="color: #67b11d;">[</span>x xs<span style="color: #67b11d;">]</span> <span style="color: #67b11d;">(</span>f x<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Evaluation count : 12756480 in 60 samples of 212608 calls.</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;              </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 4.829359 &#181;s</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;     </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time std-deviation : 117.404269 ns</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time lower quantile : 4.600029 &#181;s ( 2.5%)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time upper quantile : 5.031585 &#181;s (97.5%)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;                    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Overhead used : 2.538093 ns</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Retaining results</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span>mapv f xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Evaluation count : 16289340 in 60 samples of 271489 calls.</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;              </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 3.762177 &#181;s</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;     </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time std-deviation : 88.800651 ns</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time lower quantile : 3.635101 &#181;s ( 2.5%)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time upper quantile : 3.949551 &#181;s (97.5%)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;                    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Overhead used : 2.538093 ns</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span>into <span style="color: #2d9574;">[]</span> xf xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Evaluation count : 16619760 in 60 samples of 276996 calls.</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;              </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 3.737071 &#181;s</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;     </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time std-deviation : 110.948249 ns</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time lower quantile : 3.583709 &#181;s ( 2.5%)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time upper quantile : 4.025705 &#181;s (97.5%)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;                    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Overhead used : 2.538093 ns</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Discarding results</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">doseq</span> <span style="color: #2d9574;">[</span>x xs<span style="color: #2d9574;">]</span> <span style="color: #2d9574;">(</span>f x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Evaluation count : 35039640 in 60 samples of 583994 calls.</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;              </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 1.736715 &#181;s</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;     </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time std-deviation : 44.138712 ns</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time lower quantile : 1.669483 &#181;s ( 2.5%)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time upper quantile : 1.838822 &#181;s (97.5%)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;                    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Overhead used : 2.538093 ns</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span>run! f xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Evaluation count : 31278240 in 60 samples of 521304 calls.</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;              </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 1.976677 &#181;s</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;     </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time std-deviation : 52.700832 ns</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time lower quantile : 1.898028 &#181;s ( 2.5%)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time upper quantile : 2.079708 &#181;s (97.5%)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;                    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Overhead used : 2.538093 ns</span>
+</pre>
+</div>
+
+<table border="2" cellspacing="0" cellpadding="6" rules="groups" frame="hsides">
+
+
+<colgroup>
+<col  class="org-left" />
+
+<col  class="org-right" />
+</colgroup>
+<thead>
+<tr>
+<th scope="col" class="org-left">Method</th>
+<th scope="col" class="org-right">time (us)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td class="org-left">map</td>
+<td class="org-right">6.076866</td>
+</tr>
+
+<tr>
+<td class="org-left">for</td>
+<td class="org-right">4.829359</td>
+</tr>
+
+<tr>
+<td class="org-left">mapv</td>
+<td class="org-right">3.762177</td>
+</tr>
+
+<tr>
+<td class="org-left">into</td>
+<td class="org-right">3.737071</td>
+</tr>
+
+<tr>
+<td class="org-left">doseq</td>
+<td class="org-right">1.736715</td>
+</tr>
+
+<tr>
+<td class="org-left">run!</td>
+<td class="org-right">1.976677</td>
+</tr>
+</tbody>
+</table>
+
+
+<div class="figure">
+<p><img src="../assets/img/iteration.png" alt="iteration.png" />
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orga25571b" class="outline-2">
+<h2 id="orga25571b">Summary</h2>
+<div class="outline-text-2" id="text-orga25571b">
+<p>
+Do use:
+</p>
+<ul class="org-ul">
+<li>Retain results:
+<ul class="org-ul">
+<li><code>mapv</code>: instead of <code>map</code></li>
+<li><code>(into init (map f) xs)</code>: instead of <code>map</code>.</li>
+<li><code>reduce</code></li>
+<li><code>transduce</code></li>
+</ul></li>
+<li>Don't retain results:
+<ul class="org-ul">
+<li><code>run!</code>: instead of <code>map</code></li>
+<li><code>doseq</code>: instead of <code>for</code></li>
+</ul></li>
+</ul>
+
+<p>
+Avoid:
+</p>
+<ul class="org-ul">
+<li><code>map</code> for side effects. It gives you chunked laziness, which makes
+no sense for side effects.</li>
+<li><code>doall</code>. Your code smells. It's telling you it wants to be something
+else.</li>
+<li><code>(into init (map f xs))</code>: It creates an intermediate lazy sequence.
+About twice as slow. as the transducing variant.</li>
+</ul>
+
+<p>
+Unmentioned:
+</p>
+<ul class="org-ul">
+<li><code>pmap</code>: <code>pmap</code> is unsuitable for the same reasons as <code>map</code> and one
+more: you have no control over its concurrency, which is very
+important when performing side effects. You don't want to overwhelm
+a remote resource. I'll address this problem in another post, but
+for now, avoid.</li>
+</ul>
+
+
+<p>
+Your code will be more idiomatic and perform better.
+</p>
+
+<p>
+Happy hacking.
+</p>
+</div>
+</div>
