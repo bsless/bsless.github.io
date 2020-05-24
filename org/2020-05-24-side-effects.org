@@ -1,0 +1,163 @@
+#+TITLE: Side Effects In Clojure and Iteration
+
+#+OPTIONS: toc:nil num:nil
+#+BEGIN_EXPORT html
+---
+layout: post
+title: Side Effects In Clojure and Iteration
+permalink: /:title/
+tags: [clojure, transducers, side effects, performance]
+categories: [clojure, transducers, side effects]
+---
+#+END_EXPORT
+
+For programmers coming in from other languages or not used to lazy
+evaluation, Clojure's idioms can come off as unnatural or confusing.
+
+This becomes doubly clear when dealing with mapping side effects over
+collections.
+
+This is an attempt to clear up some of the confusion, point out code
+smells, and suggest alternatives.
+
+* ~doall~ Smells Bad
+
+  ~doall~ is a macro which realizes lazy sequences. It's not uncommon to
+  see an inexperience developer use it to forcefully realize a sequence
+  of side effect results, for example:
+
+  #+begin_src clojure
+    (doall (map api-call! coll))
+  #+end_src
+
+  or
+
+  #+begin_src clojure
+    (doall (for [x xs] (api-call x)))
+  #+end_src
+
+  This isn't meant to be a criticism, but an attempt to bring attention
+  to an incongruity, so hopefully no one takes it harshly:
+
+  #+begin_quote
+  There is *no place* for ~doall~ in production code
+  #+end_quote
+
+  Why?
+
+  Because we either:
+  - Want lazy collections, making ~doall~ redundant (and consuming more
+    memory)
+  - We need all the results right now (eager evaluation) in which case
+    /using a lazy function is wrong/
+
+* The Alternatives
+
+  There are several paths towards the same solution, but first we need
+  to understand not all solutions are the same. What differentiates them
+  the most is whether we need to *retain the results* of computation.
+
+  - Retain results:
+    - ~mapv~
+    - ~into~
+    - ~reduce~
+    - ~transduce~
+  - Don't retain results:
+    - ~run!~
+    - ~doseq~
+  - Up to you:
+    - ~loop~
+
+  Let's take a look at each option and see what it's good for and how do
+  use it idiomatically:
+
+
+** Retaining results
+
+   The simplest option is to throw out every usage of ~(doall (map
+   ...))~ for ~mapv~ and call it a day. ~mapv~ is eager and will return
+   a vector with all the results:
+
+   #+begin_src clojure
+     (mapv api-call! coll)
+   #+end_src
+
+   Since ~mapv~ is just built on top of ~reduce~, feel free to use
+   ~reduce~ directly. It gives you slightly better control, but at a
+   cost, as ~mapv~ uses a transient collection, thus it performs better.
+
+   The best of both worlds, but requiring careful usage, is ~into~.
+   Transducers were introduced in Clojure 1.7 and are the
+   [[https://clojure.org/reference/transducers][greatest thing since sliced bread.]]
+
+   So be careful and make sure you use the transducing API:
+
+   #+begin_src clojure
+     (into [] (map api-call!) coll)
+   #+end_src
+
+   And *not*:
+
+   #+begin_src clojure
+     ;;; Seriously, avoid doing this
+     (into [] (map api-call! coll))
+   #+end_src
+
+   ~into~ also uses transient collections, so that's another win.
+
+   Equivalently, you can use ~transduce~ to the same effect:
+
+   #+begin_src clojure
+     (transduce (map api-call!) conj! (transient []) coll)
+   #+end_src
+
+** Discarding Results
+
+   For the simplest case, instead of using ~map~, use ~run!~
+
+   #+begin_src clojure
+     (run! api-call! coll)
+   #+end_src
+
+   ~run!~ returns ~nil~ and runs the provided function over the
+   collection immediately.
+
+   If you require a more verbose API, ~doseq~ is a rich alternative. its
+   syntax is equivalent to ~for~'s but it returns nothing:
+
+   #+begin_src clojure
+     (doseq [x coll]
+       (api-call! x))
+   #+end_src
+
+* Summary
+
+  Do use:
+  - Retain results:
+    - ~mapv~: instead of ~map~
+    - ~(into init (map f) xs)~: instead of ~map~.
+    - ~reduce~
+    - ~transduce~
+  - Don't retain results:
+    - ~run!~: instead of ~map~
+    - ~doseq~: instead of ~for~
+
+  Avoid:
+  - ~map~ for side effects. It gives you chunked laziness, which makes
+    no sense for side effects.
+  - ~doall~. Your code smells. It's telling you it wants to be something
+    else.
+  - ~(into init (map f xs))~: It creates an intermediate lazy sequence.
+    About twice as slow. as the transducing variant.
+
+  Unmentioned:
+  - ~pmap~: ~pmap~ is unsuitable for the same reasons as ~map~ and one
+    more: you have no control over its concurrency, which is very
+    important when performing side effects. You don't want to overwhelm
+    a remote resource. I'll address this problem in another post, but
+    for now, avoid.
+
+
+  Your code will be more idiomatic and perform better.
+
+  Happy hacking.
