@@ -255,56 +255,17 @@ the performance differences.
 <span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">The bad way</span>
 
 <span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">doall</span> <span style="color: #2d9574;">(</span>map f xs<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Evaluation count : 10186800 in 60 samples of 169780 calls.</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;              </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 6.076866 &#181;s</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;     </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time std-deviation : 196.621748 ns</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time lower quantile : 5.775623 &#181;s ( 2.5%)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time upper quantile : 6.383714 &#181;s (97.5%)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;                    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Overhead used : 2.538093 ns</span>
-
 <span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">doall</span> <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">for</span> <span style="color: #67b11d;">[</span>x xs<span style="color: #67b11d;">]</span> <span style="color: #67b11d;">(</span>f x<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Evaluation count : 12756480 in 60 samples of 212608 calls.</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;              </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 4.829359 &#181;s</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;     </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time std-deviation : 117.404269 ns</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time lower quantile : 4.600029 &#181;s ( 2.5%)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time upper quantile : 5.031585 &#181;s (97.5%)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;                    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Overhead used : 2.538093 ns</span>
 
 <span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Retaining results</span>
 
 <span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span>mapv f xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Evaluation count : 16289340 in 60 samples of 271489 calls.</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;              </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 3.762177 &#181;s</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;     </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time std-deviation : 88.800651 ns</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time lower quantile : 3.635101 &#181;s ( 2.5%)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time upper quantile : 3.949551 &#181;s (97.5%)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;                    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Overhead used : 2.538093 ns</span>
-
 <span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span>into <span style="color: #2d9574;">[]</span> xf xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Evaluation count : 16619760 in 60 samples of 276996 calls.</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;              </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 3.737071 &#181;s</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;     </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time std-deviation : 110.948249 ns</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time lower quantile : 3.583709 &#181;s ( 2.5%)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time upper quantile : 4.025705 &#181;s (97.5%)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;                    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Overhead used : 2.538093 ns</span>
 
 <span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Discarding results</span>
 
 <span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">doseq</span> <span style="color: #2d9574;">[</span>x xs<span style="color: #2d9574;">]</span> <span style="color: #2d9574;">(</span>f x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Evaluation count : 35039640 in 60 samples of 583994 calls.</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;              </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 1.736715 &#181;s</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;     </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time std-deviation : 44.138712 ns</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time lower quantile : 1.669483 &#181;s ( 2.5%)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time upper quantile : 1.838822 &#181;s (97.5%)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;                    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Overhead used : 2.538093 ns</span>
-
 <span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span>run! f xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Evaluation count : 31278240 in 60 samples of 521304 calls.</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;              </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 1.976677 &#181;s</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;     </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time std-deviation : 52.700832 ns</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time lower quantile : 1.898028 &#181;s ( 2.5%)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time upper quantile : 2.079708 &#181;s (97.5%)</span>
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;;;                    </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Overhead used : 2.538093 ns</span>
 </pre>
 </div>
 

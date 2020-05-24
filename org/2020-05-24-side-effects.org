@@ -170,56 +170,17 @@ then questions and discussions with colleagues.
     ;;; The bad way
 
     (cc/bench (doall (map f xs)))
-    ;;; Evaluation count : 10186800 in 60 samples of 169780 calls.
-    ;;;              Execution time mean : 6.076866 µs
-    ;;;     Execution time std-deviation : 196.621748 ns
-    ;;;    Execution time lower quantile : 5.775623 µs ( 2.5%)
-    ;;;    Execution time upper quantile : 6.383714 µs (97.5%)
-    ;;;                    Overhead used : 2.538093 ns
-
     (cc/bench (doall (for [x xs] (f x))))
-    ;;; Evaluation count : 12756480 in 60 samples of 212608 calls.
-    ;;;              Execution time mean : 4.829359 µs
-    ;;;     Execution time std-deviation : 117.404269 ns
-    ;;;    Execution time lower quantile : 4.600029 µs ( 2.5%)
-    ;;;    Execution time upper quantile : 5.031585 µs (97.5%)
-    ;;;                    Overhead used : 2.538093 ns
 
     ;;; Retaining results
 
     (cc/bench (mapv f xs))
-    ;;; Evaluation count : 16289340 in 60 samples of 271489 calls.
-    ;;;              Execution time mean : 3.762177 µs
-    ;;;     Execution time std-deviation : 88.800651 ns
-    ;;;    Execution time lower quantile : 3.635101 µs ( 2.5%)
-    ;;;    Execution time upper quantile : 3.949551 µs (97.5%)
-    ;;;                    Overhead used : 2.538093 ns
-
     (cc/bench (into [] xf xs))
-    ;;; Evaluation count : 16619760 in 60 samples of 276996 calls.
-    ;;;              Execution time mean : 3.737071 µs
-    ;;;     Execution time std-deviation : 110.948249 ns
-    ;;;    Execution time lower quantile : 3.583709 µs ( 2.5%)
-    ;;;    Execution time upper quantile : 4.025705 µs (97.5%)
-    ;;;                    Overhead used : 2.538093 ns
 
     ;;; Discarding results
 
     (cc/bench (doseq [x xs] (f x)))
-    ;;; Evaluation count : 35039640 in 60 samples of 583994 calls.
-    ;;;              Execution time mean : 1.736715 µs
-    ;;;     Execution time std-deviation : 44.138712 ns
-    ;;;    Execution time lower quantile : 1.669483 µs ( 2.5%)
-    ;;;    Execution time upper quantile : 1.838822 µs (97.5%)
-    ;;;                    Overhead used : 2.538093 ns
-
     (cc/bench (run! f xs))
-    ;;; Evaluation count : 31278240 in 60 samples of 521304 calls.
-    ;;;              Execution time mean : 1.976677 µs
-    ;;;     Execution time std-deviation : 52.700832 ns
-    ;;;    Execution time lower quantile : 1.898028 µs ( 2.5%)
-    ;;;    Execution time upper quantile : 2.079708 µs (97.5%)
-    ;;;                    Overhead used : 2.538093 ns
   #+end_src
 
   #+PLOT: title:"Iteration time" ind:1 deps:(2) file:"../assets/img/iteration.png" type:2d with:histograms set:"yrange [0:]"
