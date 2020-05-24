@@ -20,6 +20,9 @@ collections.
 This is an attempt to clear up some of the confusion, point out code
 smells, and suggest alternatives.
 
+It was initially inspired by [[https://clojureverse.org/t/best-concise-idiomatic-way-to-map-for-side-effects][this post]], 
+then questions and discussions with colleagues.
+
 * ~doall~ Smells Bad
 
   ~doall~ is a macro which realizes lazy sequences. It's not uncommon to
