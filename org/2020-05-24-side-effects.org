@@ -4,10 +4,10 @@
 #+BEGIN_EXPORT html
 ---
 layout: post
-title: Idiomatic Clojure: Mixing Side Effects and Iteration
+title: "Idiomatic Clojure: Mixing Side Effects and Iteration"
 permalink: /:title/
-tags: [clojure, transducers, side effects, performance, idiomatic clojure]
-categories: [clojure, transducers, side effects, idiomatic clojure]
+tags: [clojure, transducers, "side effects", performance, "idiomatic clojure"]
+categories: [clojure, transducers, "side effects", "idiomatic clojure"]
 ---
 #+END_EXPORT
 
