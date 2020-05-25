@@ -23,5 +23,5 @@ craftsmanship, and Lisp (if that wasn't obvious).
 
 Find me on:
 
-- [twitter](https://twitter.com/bsless)
+- [twitter](https://twitter.com/_bsless)
 - [github](https://github.com/bsless)
