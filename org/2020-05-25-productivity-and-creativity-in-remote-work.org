@@ -1,0 +1,77 @@
+#+TITLE: Balancing Productivity and Creativity In Remote Work
+
+#+OPTIONS: toc:nil num:nil
+#+BEGIN_EXPORT html
+---
+layout: post
+title: "Balancing Productivity and Creativity In Remote Work"
+permalink: /:title/
+tags: [productivity, "remote work"]
+categories: [productivity, "remote work"]
+---
+#+END_EXPORT
+
+We live in interesting times. Significant portions of the tech and
+business industry are currently working remotely, including 
+[[https://www.theverge.com/2020/5/8/21252240/google-employees-essential-staff-remote-work-from-home-2021][Google]]
+[[https://blog.twitter.com/en_us/topics/company/2020/keeping-our-employees-and-partners-safe-during-coronavirus.html][Twitter]]
+and [[https://www.washingtonpost.com/technology/2020/05/21/facebook-permanent-remote-work/][Facebook]].
+
+There's an ever growing body of research which shows the current trend
+in office design, the open office, is a productivity killer, and perhaps
+counter-intuitively, also harms collaboration, see:
+
+- [[https://theconversation.com/a-new-study-should-be-the-final-nail-for-open-plan-offices-99756][A new study should be the final nail for open-plan offices]]
+- [[https://www.inc.com/jessica-stillman/new-harvard-study-you-open-plan-office-is-making-your-team-less-collaborative.html][New Harvard Study: Your Open-Plan Office Is Making Your Team Less Collaborative]]
+- [[https://www.inc.com/geoffrey-james/science-just-proved-that-open-plan-offices-destroy-productivity.html][Open-Plan Offices Kill Productivity, According to Science]]
+
+I hunted down [[https://royalsocietypublishing.org/doi/full/10.1098/rstb.2017.0239][one of the mentioned studies]]:
+
+#+begin_quote
+Organizations’ pursuit of increased workplace collaboration has led
+managers to transform traditional office spaces into ‘open’,
+transparency-enhancing architectures with fewer walls, doors and other
+spatial boundaries, yet there is scant direct empirical research on how
+human interaction patterns change as a result of these architectural
+changes. In two intervention-based field studies of corporate
+headquarters transitioning to more open office spaces, we empirically
+examined—using digital data from advanced wearable devices and from
+electronic communication servers—the effect of open office architectures
+on employees' face-to-face, email and instant messaging (IM) interaction
+patterns. Contrary to common belief, the volume of face-to-face
+interaction decreased significantly (approx. 70%) in both cases, with an
+associated increase in electronic interaction. In short, rather than
+prompting increasingly vibrant face-to-face collaboration, open
+architecture appeared to trigger a natural human response to socially
+withdraw from officemates and interact instead over email and IM. This
+is the first study to empirically measure both face-to-face and
+electronic interaction before and after the adoption of open office
+architecture. The results inform our understanding of the impact on
+human behaviour of workspaces that trend towards fewer spatial
+boundaries.
+#+end_quote
+
+Keep in mind some of theses results may be affected by cultural factors,
+but they're still significant.
+
+The current ongoing experiment in remote work is proving itself rather
+nicely, but there's one concern I keep hearing repeated: people miss the
+stochastic element of random conversations, half-heard fragments and
+other random cross-pollinating factors, which they feel negatively
+impact creativity and new ideas.
+
+Since the water cooler is gone, and the only corridors left are in our
+homes, perhaps it would be a good idea to facilitate a sort of virtual
+water cooler, where employees could have the unstructured conversations
+necessary for this process to occur. It isn't a perfect replacement for
+face-to-face interactions, but perfect may be the enemy of good in this case.
+
+A possible medium to facilitate this is persistent voice chat rooms with
+visible members, into which every member of the organization could just
+pop in and join an organic conversation.
+
+Both [[https://discord.com/][Discord]] and [[https://about.riot.im/][Riot]], if you prefer open source projects, support this
+capability.
+
+I'd be interested to see people experiment with these options and how it
+affects an organization's productivity and creativity.
