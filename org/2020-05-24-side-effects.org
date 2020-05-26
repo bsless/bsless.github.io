@@ -57,7 +57,7 @@ then questions and discussions with colleagues.
   Because we either:
   - Want lazy collections, making ~doall~ redundant (and consuming more
     memory)
-  - We need all the results right now (eager evaluation) in which case
+  - Need all the results right now (eager evaluation) in which case
     /using a lazy function is wrong/
 
 * Lazyness in the multi-threaded context
