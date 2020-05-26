@@ -214,7 +214,7 @@ then questions and discussions with colleagues.
   - ~doall~. Your code smells. It's telling you it wants to be something
     else.
   - ~(into init (map f xs))~: It creates an intermediate lazy sequence.
-    About twice as slow. as the transducing variant.
+    About twice as slow as the transducing variant.
 
   Unmentioned:
   - ~pmap~: ~pmap~ is unsuitable for the same reasons as ~map~ and one
