@@ -1,0 +1,345 @@
+#+TITLE: Idiomatic Clojure: Mixing Parallel Side Effects and Iteration
+
+#+OPTIONS: toc:nil num:nil
+#+BEGIN_EXPORT html
+---
+layout: post
+title: "Idiomatic Clojure: Mixing Parallel Side Effects and Iteration"
+permalink: /:title/
+tags: [clojure, transducers, "side effects", performance, "idiomatic clojure"]
+categories: [clojure, transducers, "side effects", "idiomatic clojure"]
+---
+#+END_EXPORT
+
+It is often said one should not offer criticism without suggesting an
+alternative.
+
+In a previous post which dealt with the idiomatic ways of mixing side
+effects and iteration in Clojure, I mentioned ~pmap~ is a bad option for
+performing side effects in parallel.
+
+Since I'm not paid highly enough to just offer my criticism and let
+others figure it out by themselves, I'll explain in this post why ~pmap~
+should be avoided for side effects, and what other alternatives are out
+there for effective (and Effective) multi-threaded programming in
+Clojure
+
+* Before We Begin
+  
+  This time just waving hands with ~api-call!~ wouldn't suffice, so
+  we'll fake one to use in our examples:
+  
+  #+begin_src clojure
+    (defn api-call!
+      [x]
+      (Thread/sleep 2000)
+      (println x)
+      x)
+  #+end_src
+  
+  It does side effects, blocks and returns a value. Everything we need
+  to make an interesting function.
+  
+  Requirements:
+
+  #+begin_src clojure
+    '{:deps
+     {org.clojure/core.async {:mvn/version "RELEASE"}
+      org.clojure/clojure {:mvn/version "RELEASE"}
+      manifold {:mvn/version "RELEASE"}
+      funcool/promesa {:mvn/version "RELEASE"}
+      tolitius/lasync {:mvn/version "RELEASE"}
+      com.climate/claypool {:mvn/version "RELEASE"}}}
+  #+end_src
+
+* But Why Not ~pmap~?
+  
+  ~pmap~ is easy, accessible, and understandable. 
+  
+  If it's so easy, why shouldn't we use it?
+  
+  To understand, try to answer the following questions:
+  - what happens when you evaluate the following expression?
+  - when will it happen?
+  - on which threads?
+  - what is the value of ~xs~?
+  
+  #+begin_src clojure
+    (def xs (pmap api-call! (range 128)))
+
+    (time
+     (reduce + 0 (pmap api-call! (range 128))))
+
+    (/ 128 8) ;; => 16
+
+
+    (time
+     (run! println (pmap api-call! (range 512))))
+
+    (/ 512 32) ;; => 16
+  #+end_src
+  
+  The answers to these questions are fundamental in our understanding of
+  why ~pmap~ is a bad choice for performing side effects. We lack
+  control over important parameters (when, where) which are critical
+  when performing side effects.
+  
+** What happens when you ~pmap~?
+   
+   This is what gets printed out:
+   
+   #+begin_src 
+    1
+    2019
+    27
+    14
+    5
+    16
+    10
+    80
+    6
+    4
+    13
+    7
+    11
+    29
+    12
+    31
+    15
+    9
+    17
+    2
+    28
+    18
+    21
+    3
+    25
+    
+    24
+    23
+    26
+    22
+    30
+    
+    
+
+   #+end_src
+   
+   What are we seeing?
+   
+   First, it's important to understand an implementation detail which
+   concerns lazy sequences in Clojure: They are realized in chunks of 32
+   elements at a time.
+
+   Since ~pmap~ is lazy, a chunk was realized. But if you'll notice, it
+   didn't take 64 seconds, although each api call takes ~2 seconds.
+   
+   That is because ~pmap~ creates a ~future~ for *every element in the
+   sequence*:
+
+   #+begin_src clojure
+     (map #(future (f %)) coll)
+   #+end_src
+   
+   Another subtlety is that ~pmap~ is "semi" lazy, in that it tries to
+   stay realize ~availableProcessors~ +2 elements ahead. 
+
+** When?
+
+   Hard to tell, ~pmap~ will give it a good try to stay ahead of your
+   computation, but what happens when you use ~pmap~ in too many places
+   in your code in parallel? The answer to that is not so deterministic.
+
+** On Which Thread?
+
+   ~pmap~ uses ~future~ which uses agents' ~soloExecutor~ service, which
+   is a cached thread pool.
+
+   What does it mean in layman's terms? We can't know on which thread it
+   happens, or on how many. In I think it's safe to assume each ~pmap~
+   call will use ~availableProcessors~ +2 threads. What happens if you
+   call it twice in close succession?
+
+** The value of ~xs~
+   
+   The value of ~xs~ will change in time and in execution, as it will
+   block while the rest of the lazy sequence materializes.
+
+* Executors
+  
+** Unbounded Queue
+   
+   #+begin_src clojure
+     (import '[java.util.concurrent Executors ExecutorService])
+
+     (defn fixed-pool
+       ([n]
+        (Executors/newFixedThreadPool n))
+       ([n factory]
+        (Executors/newFixedThreadPool n factory)))
+
+     (defonce default-pool (delay (Executors/newFixedThreadPool 2)))
+
+     (defn submit*
+       [pool f]
+       (.submit ^ExecutorService pool ^Callable f))
+
+     (defmacro submit
+       [pool & body]
+       `(submit* ~pool (fn* [] ~@body)))
+
+     (defn pmap*
+       ([f xs]
+        (pmap* @default-pool f xs))
+       ([pool f xs]
+        (->> xs
+             (mapv #(submit pool (f %)))
+             (mapv deref))))
+
+     (pmap* (fixed-pool 2) api-call! (vec (range 10)))
+   #+end_src
+  
+   For a slightly different example, see [[https://github.com/clojure/core.async/blob/master/src/main/clojure/clojure/core/async/impl/exec/threadpool.clj][core.async]]'s implementation.
+
+** Blocking Queue
+   
+   [[https://github.com/tolitius/lasync][tolitius/lasync]]
+   
+   #+begin_src clojure
+     (require '[lasync.core :as lasync])
+
+     (def pool (lasync/pool :threads 2))
+
+     (pmap* pool api-call! (range 10))
+   #+end_src
+
+** Alternative implementations
+   
+   [[https://github.com/TheClimateCorporation/claypoole][TheClimateCorporation/claypoole]]
+   
+   #+begin_src clojure
+     (require '[com.climate.claypoole :as cp])
+     (def pool (cp/threadpool 4))
+     (def output (cp/pmap pool api-call! (range 64)))
+   #+end_src
+
+* core.async
+
+** pipeline
+   
+   #+begin_src clojure
+     (require '[clojure.core.async :as async])
+
+     (defn parallel
+       "Returns a channel which will contain a transient vector of results"
+       ([n f xs]
+        (parallel nil n f xs))
+       ([buf-or-n n f xs]
+        (let [out (async/chan)]
+          (async/pipeline-blocking
+           n
+           out
+           (map f)
+           (async/to-chan xs))
+          (async/reduce conj! (transient []) out))))
+
+
+     (def ch (parallel 4 api-call! (range 16)))
+     (persistent! (async/<!! ch))
+     ;; => [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15]
+   #+end_src
+   
+   If ~api-call!~ had been asynchronous ~pipeline-blocking~ can be
+   swapped for ~pipeline-async~, and instead of a transducer:
+
+   #+begin_src clojure
+     (fn af [v c]
+       (api-call!
+        v
+        (fn cb [res] (async/put! c res) (async/close! c))))
+   #+end_src
+
+** Thread Pool
+   
+   If you're using core.async and haven't read
+   [[http://danboykis.com/posts/things-i-wish-i-knew-about-core-async/][Things I Wish I knew about core.async]] take a few extra minutes of
+   your day to read it. Building off the final example in the post:
+
+   #+begin_src clojure
+     (defn async-wrapper [pool f]
+       (let [ch (async/chan 1)]
+         (.submit
+          pool
+          (fn []
+            (try (async/put! ch (f))
+                 (catch Exception e (async/put! ch (ex-info "some error" {} e)))
+                 (finally (async/close! ch)))))
+         ch))
+
+     (defmacro asyncly
+       [pool & body]
+       `(async-wrapper ~pool (fn* [] ~@body)))
+
+
+     (->> (range 8)
+          (mapv #(asyncly @default-pool (api-call! %)))
+          async/merge
+          (async/reduce conj [])
+          async/<!!)
+     ;; => [1 0 3 2 4 5 6 7]
+   #+end_src
+
+* Promesa
+  
+  [[https://cljdoc.org/d/funcool/promesa/5.1.0/doc/user-guide][documentation]]
+  
+  #+begin_src clojure
+    (require '[promesa.core :as p] '[promesa.exec :as exec])
+
+    (def xs (vec (range 32)))
+
+    (defn api-call+
+      [ex x]
+      (p/then (p/promise x) api-call! ex))
+
+    (def ex (exec/fixed-pool 4))
+
+    (def p (p/all (map (partial api-call+ ex) xs)))
+
+    @p;; => [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31]
+  #+end_src
+
+* Manifold
+  
+  #+begin_src clojure
+    (require '[manifold.deferred :as d]
+             '[manifold.executor :as e])
+
+    (def ex (e/fixed-thread-executor 4))
+
+    (defn manifold-api-call
+      [ex x]
+      (let [d (d/deferred ex)
+            c (d/chain d #(future (api-call! %)))]
+        (d/success! d x)
+        c))
+
+    (def out (apply d/zip (mapv (partial manifold-api-call ex) (range 32))))
+  #+end_src
+
+  
+* Summary
+
+** Similarities
+   
+*** Promesa and Manifold
+
+    both operate on deferred values, and have the option of lifting a
+    sequence of deferred values into a single deferred value of the
+    sequence
+
+** Differences
+
+*** Monads vs. Java
+
+*** core.async vs. everything else
