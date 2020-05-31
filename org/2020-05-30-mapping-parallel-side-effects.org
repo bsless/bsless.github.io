@@ -14,7 +14,7 @@ categories: [clojure, transducers, "side effects", "idiomatic clojure"]
 It is often said one should not offer criticism without suggesting an
 alternative.
 
-In a previous post which dealt with the idiomatic ways of mixing side
+In a [[https://bsless.github.io/side-effects/][previous post]] which dealt with the idiomatic ways of mixing side
 effects and iteration in Clojure, I mentioned ~pmap~ is a bad option for
 performing side effects in parallel.
 
@@ -25,10 +25,10 @@ there for effective (and Effective) multi-threaded programming in
 Clojure
 
 * Before We Begin
-  
+
   This time just waving hands with ~api-call!~ wouldn't suffice, so
   we'll fake one to use in our examples:
-  
+
   #+begin_src clojure
     (defn api-call!
       [x]
@@ -36,10 +36,10 @@ Clojure
       (println x)
       x)
   #+end_src
-  
+
   It does side effects, blocks and returns a value. Everything we need
   to make an interesting function.
-  
+
   Requirements:
 
   #+begin_src clojure
@@ -53,17 +53,19 @@ Clojure
   #+end_src
 
 * But Why Not ~pmap~?
-  
-  ~pmap~ is easy, accessible, and understandable. 
-  
+
+  ~pmap~ is easy, accessible, and understandable.
+
   If it's so easy, why shouldn't we use it?
-  
+
+  skip to the [[~pmap~ TL;DR][TL;DR]] if you don't want to read the analysis.
+
   To understand, try to answer the following questions:
   - what happens when you evaluate the following expression?
   - when will it happen?
   - on which threads?
   - what is the value of ~xs~?
-  
+
   #+begin_src clojure
     (def xs (pmap api-call! (range 128)))
 
@@ -78,17 +80,17 @@ Clojure
 
     (/ 512 32) ;; => 16
   #+end_src
-  
+
   The answers to these questions are fundamental in our understanding of
   why ~pmap~ is a bad choice for performing side effects. We lack
   control over important parameters (when, where) which are critical
   when performing side effects.
-  
+
 ** What happens when you ~pmap~?
-   
+
    This is what gets printed out:
-   
-   #+begin_src 
+
+   #+begin_src
     1
     2019
     27
@@ -114,35 +116,35 @@ Clojure
     21
     3
     25
-    
+
     24
     23
     26
     22
     30
-    
-    
+
+
 
    #+end_src
-   
+
    What are we seeing?
-   
+
    First, it's important to understand an implementation detail which
    concerns lazy sequences in Clojure: They are realized in chunks of 32
    elements at a time.
 
    Since ~pmap~ is lazy, a chunk was realized. But if you'll notice, it
    didn't take 64 seconds, although each api call takes ~2 seconds.
-   
+
    That is because ~pmap~ creates a ~future~ for *every element in the
    sequence*:
 
    #+begin_src clojure
      (map #(future (f %)) coll)
    #+end_src
-   
+
    Another subtlety is that ~pmap~ is "semi" lazy, in that it tries to
-   stay realize ~availableProcessors~ +2 elements ahead. 
+   stay realize ~availableProcessors~ +2 elements ahead.
 
 ** When?
 
@@ -160,15 +162,32 @@ Clojure
    call will use ~availableProcessors~ +2 threads. What happens if you
    call it twice in close succession?
 
+   This also complicates exception handling and the option of providing
+   a default handler.
+
 ** The value of ~xs~
-   
+
    The value of ~xs~ will change in time and in execution, as it will
    block while the rest of the lazy sequence materializes.
 
+** ~pmap~ TL;DR
+
+   ~pmap~ is great for computation since it provides a high degree of
+   semi-lazy parallelism, however, since it is lazy, lacks control over
+   execution context (threads number, exception handling, back pressure)
+   it is unsuitable for performing side effects where these issues can
+   make or break a system.
+
 * Executors
-  
+
+  One of the most straightforward options is using
+  ~java.util.concurrent.Executors~. Executors are flexible, support
+  different policies, and are highly configurable. The below example is
+  rather simple, but demonstrates how easy it is to get started with
+  them.
+
 ** Unbounded Queue
-   
+
    #+begin_src clojure
      (import '[java.util.concurrent Executors ExecutorService])
 
@@ -198,13 +217,24 @@ Clojure
 
      (pmap* (fixed-pool 2) api-call! (vec (range 10)))
    #+end_src
-  
+
    For a slightly different example, see [[https://github.com/clojure/core.async/blob/master/src/main/clojure/clojure/core/async/impl/exec/threadpool.clj][core.async]]'s implementation.
 
 ** Blocking Queue
-   
+
+   One glaring deficiency in the previous example is the lack of back
+   pressure, which could lead to us blowing the heap up with enqueued tasks.
+
+   Using others' implementation is no shame, so let's have a look at
    [[https://github.com/tolitius/lasync][tolitius/lasync]]
-   
+
+   As stated in the README, the purpose of the library is to be able to
+   block on ~.submit~ and ~.execute~, which is exactly the issue we saw
+   in the previous implementation.
+
+   ~lasync/pool~ returns a ~ThreadPoolExecutor~ so it plugs right in to
+   our ~pmap*~ implementation.
+
    #+begin_src clojure
      (require '[lasync.core :as lasync])
 
@@ -214,9 +244,14 @@ Clojure
    #+end_src
 
 ** Alternative implementations
-   
-   [[https://github.com/TheClimateCorporation/claypoole][TheClimateCorporation/claypoole]]
-   
+
+   If you don't want to implement anything yourself, including ~pmap~,
+   and perhaps need a richer API, which for example doesn't guarantee
+   ordering, or supports parallel list comprehensions (~for~), take a
+   look at [[https://github.com/TheClimateCorporation/claypoole][TheClimateCorporation/claypoole]]
+
+   Usage is very straightforward:
+
    #+begin_src clojure
      (require '[com.climate.claypoole :as cp])
      (def pool (cp/threadpool 4))
@@ -225,8 +260,14 @@ Clojure
 
 * core.async
 
+  Same solutions which used the executor can be implemented with
+  different abstractions and contexts. An interesting one is core.async,
+  which allows us to use pipelines for sequence processing. If we look
+  at each batch as a sequence, the following implementation arises
+  naturally:
+
 ** pipeline
-   
+
    #+begin_src clojure
      (require '[clojure.core.async :as async])
 
@@ -248,7 +289,7 @@ Clojure
      (persistent! (async/<!! ch))
      ;; => [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15]
    #+end_src
-   
+
    If ~api-call!~ had been asynchronous ~pipeline-blocking~ can be
    swapped for ~pipeline-async~, and instead of a transducer:
 
@@ -259,8 +300,17 @@ Clojure
         (fn cb [res] (async/put! c res) (async/close! c))))
    #+end_src
 
+   A slight problem with the above implementation is that it has higher
+   overhead than previous ones. It allocates plenty of channels, new
+   ~async/thread~ s for each call, which isn't completely terrible as it
+   uses a cached thread pool, and requires working with channels all the
+   way.
+
+   It's probably a suitable solution if your entire code base is already
+   written in the abstraction, otherwise I'm not sure I'd go with it.
+
 ** Thread Pool
-   
+
    If you're using core.async and haven't read
    [[http://danboykis.com/posts/things-i-wish-i-knew-about-core-async/][Things I Wish I knew about core.async]] take a few extra minutes of
    your day to read it. Building off the final example in the post:
@@ -289,10 +339,29 @@ Clojure
      ;; => [1 0 3 2 4 5 6 7]
    #+end_src
 
+   This example nicely ties together everything we've seen until now.
+   Pay attention that it does not preserve order.
+
 * Promesa
-  
-  [[https://cljdoc.org/d/funcool/promesa/5.1.0/doc/user-guide][documentation]]
-  
+
+  Promesa is a promise library for Clojure and ClojureScript, with
+  pretty light overhead.
+
+  Promesa does not just provide facilities for concurrent execution, but
+  models them as Effect types, thus providing a very human friendly
+  transition between the following:
+
+  #+begin_src haskell
+    f :: [a] -> [Future<a>] -- map api-call+ [a]
+    g :: [Future<a>] -> Future<[a]> -- all
+    h :: Future<[a]> -> [a] -- deref
+  #+end_src
+
+  (Any Haskellers who want to shout at me or correct me for the mess I
+  wrote here are welcome, I promise to correct it based on your feedback)
+
+  See the [[https://cljdoc.org/d/funcool/promesa/5.1.0/doc/user-guide][documentation]]
+
   #+begin_src clojure
     (require '[promesa.core :as p] '[promesa.exec :as exec])
 
@@ -309,8 +378,18 @@ Clojure
     @p;; => [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31]
   #+end_src
 
+  Promesa Just Works and has light overhead, and would be my pick in
+  most use cases.
+
 * Manifold
-  
+
+  Manifold's deferred abstraction is pretty similar to Promesa's
+  promises, with slightly higher overhead.
+  It also offers a stream abstraction which isn't necessarily relevant
+  for this discussion.
+
+  See the [[https://github.com/ztellman/manifold][documentation]]
+
   #+begin_src clojure
     (require '[manifold.deferred :as d]
              '[manifold.executor :as e])
@@ -327,19 +406,41 @@ Clojure
     (def out (apply d/zip (mapv (partial manifold-api-call ex) (range 32))))
   #+end_src
 
-  
 * Summary
 
 ** Similarities
-   
+
 *** Promesa and Manifold
 
     both operate on deferred values, and have the option of lifting a
     sequence of deferred values into a single deferred value of the
-    sequence
+    sequence.
 
 ** Differences
 
 *** Monads vs. Java
 
+    Promesa and Manifold are "up there" in a monadic world of effect
+    types while the Java leaning implementations are more "just get
+    things done" solutions. More mechanical.
+
 *** core.async vs. everything else
+
+    The core.async solutions is the most mechanical and out of the
+    common abstractions which already exist in Clojure (map,
+    executors).
+
+** Retrospective
+
+*** The Clojuriest
+
+    Of all available solutions the most Clojure-y ones are definitely
+    [[https://github.com/tolitius/lasync][tolitius/lasync]] and [[https://github.com/TheClimateCorporation/claypoole][TheClimateCorporation/claypoole]]. Claypoole
+    especially provides an almost drop-in replacement for your bad code.
+
+*** The comfiest
+
+    I have to admit I like Promesa. The abstraction is comfortable and
+    lends itself well to a code base which relies on asynchronous
+    computation. It also plays well with funcool's other library,
+    ~cats~, which implements category theory concepts in Clojure.
