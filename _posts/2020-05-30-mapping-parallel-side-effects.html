@@ -1,0 +1,639 @@
+---
+layout: post
+title: "Idiomatic Clojure: Mixing Parallel Side Effects and Iteration"
+permalink: /:title/
+tags: [clojure, transducers, "side effects", performance, "idiomatic clojure"]
+categories: [clojure, transducers, "side effects", "idiomatic clojure"]
+---
+
+<p>
+It is often said one should not offer criticism without suggesting an
+alternative.
+</p>
+
+<p>
+In a <a href="https://bsless.github.io/side-effects/">previous post</a> which dealt with the idiomatic ways of mixing side
+effects and iteration in Clojure, I mentioned <code>pmap</code> is a bad option for
+performing side effects in parallel.
+</p>
+
+<p>
+Since I'm not paid highly enough to just offer my criticism and let
+others figure it out by themselves, I'll explain in this post why <code>pmap</code>
+should be avoided for side effects, and what other alternatives are out
+there for effective (and Effective) multi-threaded programming in
+Clojure
+</p>
+
+<div id="outline-container-org3ce8b78" class="outline-2">
+<h2 id="org3ce8b78">Before We Begin</h2>
+<div class="outline-text-2" id="text-org3ce8b78">
+<p>
+This time just waving hands with <code>api-call!</code> wouldn't suffice, so
+we'll fake one to use in our examples:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">api-call!</span>
+  <span style="color: #6c3163;">[</span>x<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">Thread</span>/sleep <span style="color: #4e3163;">2000</span><span style="color: #6c3163;">)</span>
+  <span style="color: #6c3163;">(</span>println x<span style="color: #6c3163;">)</span>
+  x<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+It does side effects, blocks and returns a value. Everything we need
+to make an interesting function.
+</p>
+
+<p>
+Requirements:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure">'<span style="color: #3a81c3;">{</span><span style="color: #4e3163;">:deps</span>
+ <span style="color: #6c3163;">{</span><span style="color: #ba2f59; font-weight: bold;">org.clojure</span>/core.async <span style="color: #2d9574;">{</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">mvn</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">version</span> <span style="color: #2d9574;">"RELEASE"</span><span style="color: #2d9574;">}</span>
+  <span style="color: #ba2f59; font-weight: bold;">org.clojure</span>/clojure <span style="color: #2d9574;">{</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">mvn</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">version</span> <span style="color: #2d9574;">"RELEASE"</span><span style="color: #2d9574;">}</span>
+  manifold <span style="color: #2d9574;">{</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">mvn</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">version</span> <span style="color: #2d9574;">"RELEASE"</span><span style="color: #2d9574;">}</span>
+  <span style="color: #ba2f59; font-weight: bold;">funcool</span>/promesa <span style="color: #2d9574;">{</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">mvn</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">version</span> <span style="color: #2d9574;">"RELEASE"</span><span style="color: #2d9574;">}</span>
+  <span style="color: #ba2f59; font-weight: bold;">tolitius</span>/lasync <span style="color: #2d9574;">{</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">mvn</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">version</span> <span style="color: #2d9574;">"RELEASE"</span><span style="color: #2d9574;">}</span>
+  <span style="color: #ba2f59; font-weight: bold;">com.climate</span>/claypool <span style="color: #2d9574;">{</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">mvn</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">version</span> <span style="color: #2d9574;">"RELEASE"</span><span style="color: #2d9574;">}</span><span style="color: #6c3163;">}</span><span style="color: #3a81c3;">}</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org7c6d159" class="outline-2">
+<h2 id="org7c6d159">But Why Not <code>pmap</code>?</h2>
+<div class="outline-text-2" id="text-org7c6d159">
+<p>
+<code>pmap</code> is easy, accessible, and understandable.
+</p>
+
+<p>
+If it's so easy, why shouldn't we use it?
+</p>
+
+<p>
+skip to the <a href="#orga7141f8">TL;DR</a> if you don't want to read the analysis.
+</p>
+
+<p>
+To understand, try to answer the following questions:
+</p>
+<ul class="org-ul">
+<li>what happens when you evaluate the following expression?</li>
+<li>when will it happen?</li>
+<li>on which threads?</li>
+<li>what is the value of <code>xs</code>?</li>
+</ul>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">xs</span> <span style="color: #6c3163;">(</span>pmap api-call! <span style="color: #2d9574;">(</span>range <span style="color: #4e3163;">128</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>time
+ <span style="color: #6c3163;">(</span>reduce + <span style="color: #4e3163;">0</span> <span style="color: #2d9574;">(</span>pmap api-call! <span style="color: #67b11d;">(</span>range <span style="color: #4e3163;">128</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>/ <span style="color: #4e3163;">128</span> <span style="color: #4e3163;">8</span><span style="color: #3a81c3;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; 16</span>
+
+
+<span style="color: #3a81c3;">(</span>time
+ <span style="color: #6c3163;">(</span>run! println <span style="color: #2d9574;">(</span>pmap api-call! <span style="color: #67b11d;">(</span>range <span style="color: #4e3163;">512</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>/ <span style="color: #4e3163;">512</span> <span style="color: #4e3163;">32</span><span style="color: #3a81c3;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; 16</span>
+</pre>
+</div>
+
+<p>
+The answers to these questions are fundamental in our understanding of
+why <code>pmap</code> is a bad choice for performing side effects. We lack
+control over important parameters (when, where) which are critical
+when performing side effects.
+</p>
+</div>
+
+<div id="outline-container-org16da937" class="outline-3">
+<h3 id="org16da937">What happens when you <code>pmap</code>?</h3>
+<div class="outline-text-3" id="text-org16da937">
+<p>
+This is what gets printed out:
+</p>
+
+<pre class="example">
+1
+2019
+27
+14
+5
+16
+10
+80
+6
+4
+13
+7
+11
+29
+12
+31
+15
+9
+17
+2
+28
+18
+21
+3
+25
+
+24
+23
+26
+22
+30
+
+
+
+</pre>
+
+<p>
+What are we seeing?
+</p>
+
+<p>
+First, it's important to understand an implementation detail which
+concerns lazy sequences in Clojure: They are realized in chunks of 32
+elements at a time.
+</p>
+
+<p>
+Since <code>pmap</code> is lazy, a chunk was realized. But if you'll notice, it
+didn't take 64 seconds, although each api call takes ~2 seconds.
+</p>
+
+<p>
+That is because <code>pmap</code> creates a <code>future</code> for <b>every element in the
+sequence</b>:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>map #<span style="color: #6c3163;">(</span>future <span style="color: #2d9574;">(</span>f <span style="color: #715ab1;">%</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span> coll<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Another subtlety is that <code>pmap</code> is "semi" lazy, in that it tries to
+stay realize <code>availableProcessors</code> +2 elements ahead.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgce0fd71" class="outline-3">
+<h3 id="orgce0fd71">When?</h3>
+<div class="outline-text-3" id="text-orgce0fd71">
+<p>
+Hard to tell, <code>pmap</code> will give it a good try to stay ahead of your
+computation, but what happens when you use <code>pmap</code> in too many places
+in your code in parallel? The answer to that is not so deterministic.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgdfeb9e3" class="outline-3">
+<h3 id="orgdfeb9e3">On Which Thread?</h3>
+<div class="outline-text-3" id="text-orgdfeb9e3">
+<p>
+<code>pmap</code> uses <code>future</code> which uses agents' <code>soloExecutor</code> service, which
+is a cached thread pool.
+</p>
+
+<p>
+What does it mean in layman's terms? We can't know on which thread it
+happens, or on how many. In I think it's safe to assume each <code>pmap</code>
+call will use <code>availableProcessors</code> +2 threads. What happens if you
+call it twice in close succession?
+</p>
+
+<p>
+This also complicates exception handling and the option of providing
+a default handler.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgc59c751" class="outline-3">
+<h3 id="orgc59c751">The value of <code>xs</code></h3>
+<div class="outline-text-3" id="text-orgc59c751">
+<p>
+The value of <code>xs</code> will change in time and in execution, as it will
+block while the rest of the lazy sequence materializes.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orga7141f8" class="outline-3">
+<h3 id="orga7141f8"><code>pmap</code> TL;DR</h3>
+<div class="outline-text-3" id="text-orga7141f8">
+<p>
+<code>pmap</code> is great for computation since it provides a high degree of
+semi-lazy parallelism, however, since it is lazy, lacks control over
+execution context (threads number, exception handling, back pressure)
+it is unsuitable for performing side effects where these issues can
+make or break a system.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orga6df3b2" class="outline-2">
+<h2 id="orga6df3b2">Executors</h2>
+<div class="outline-text-2" id="text-orga6df3b2">
+<p>
+One of the most straightforward options is using
+<code>java.util.concurrent.Executors</code>. Executors are flexible, support
+different policies, and are highly configurable. The below example is
+rather simple, but demonstrates how easy it is to get started with
+them.
+</p>
+</div>
+
+<div id="outline-container-org545c5a6" class="outline-3">
+<h3 id="org545c5a6">Unbounded Queue</h3>
+<div class="outline-text-3" id="text-org545c5a6">
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>import '<span style="color: #6c3163;">[</span>java.util.concurrent Executors ExecutorService<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">fixed-pool</span>
+  <span style="color: #6c3163;">(</span><span style="color: #2d9574;">[</span>n<span style="color: #2d9574;">]</span>
+   <span style="color: #2d9574;">(</span><span style="color: #ba2f59; font-weight: bold;">Executors</span>/newFixedThreadPool n<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span>
+  <span style="color: #6c3163;">(</span><span style="color: #2d9574;">[</span>n factory<span style="color: #2d9574;">]</span>
+   <span style="color: #2d9574;">(</span><span style="color: #ba2f59; font-weight: bold;">Executors</span>/newFixedThreadPool n factory<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defonce</span> <span style="color: #715ab1;">default-pool</span> <span style="color: #6c3163;">(</span>delay <span style="color: #2d9574;">(</span><span style="color: #ba2f59; font-weight: bold;">Executors</span>/newFixedThreadPool <span style="color: #4e3163;">2</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">submit*</span>
+  <span style="color: #6c3163;">[</span>pool f<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span>.submit <span style="color: #655370; background-color: #fbf8ef;">^</span><span style="color: #ba2f59; font-weight: bold;">ExecutorService</span> pool <span style="color: #655370; background-color: #fbf8ef;">^</span><span style="color: #ba2f59; font-weight: bold;">Callable</span> f<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defmacro</span> <span style="color: #6c3163; font-weight: bold;">submit</span>
+  <span style="color: #6c3163;">[</span>pool &amp; body<span style="color: #6c3163;">]</span>
+  `<span style="color: #6c3163;">(</span>submit* ~pool <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">fn*</span> <span style="color: #67b11d;">[]</span> ~@body<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">pmap*</span>
+  <span style="color: #6c3163;">(</span><span style="color: #2d9574;">[</span>f xs<span style="color: #2d9574;">]</span>
+   <span style="color: #2d9574;">(</span>pmap* @default-pool f xs<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span>
+  <span style="color: #6c3163;">(</span><span style="color: #2d9574;">[</span>pool f xs<span style="color: #2d9574;">]</span>
+   <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">-&gt;&gt;</span> xs
+        <span style="color: #67b11d;">(</span>mapv #<span style="color: #b1951d;">(</span>submit pool <span style="color: #3a81c3;">(</span>f <span style="color: #715ab1;">%</span><span style="color: #3a81c3;">)</span><span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span>
+        <span style="color: #67b11d;">(</span>mapv deref<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>pmap* <span style="color: #6c3163;">(</span>fixed-pool <span style="color: #4e3163;">2</span><span style="color: #6c3163;">)</span> api-call! <span style="color: #6c3163;">(</span>vec <span style="color: #2d9574;">(</span>range <span style="color: #4e3163;">10</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+For a slightly different example, see <a href="https://github.com/clojure/core.async/blob/master/src/main/clojure/clojure/core/async/impl/exec/threadpool.clj">core.async</a>'s implementation.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org7bd3d16" class="outline-3">
+<h3 id="org7bd3d16">Blocking Queue</h3>
+<div class="outline-text-3" id="text-org7bd3d16">
+<p>
+One glaring deficiency in the previous example is the lack of back
+pressure, which could lead to us blowing the heap up with enqueued tasks.
+</p>
+
+<p>
+Using others' implementation is no shame, so let's have a look at
+<a href="https://github.com/tolitius/lasync">tolitius/lasync</a>
+</p>
+
+<p>
+As stated in the README, the purpose of the library is to be able to
+block on <code>.submit</code> and <code>.execute</code>, which is exactly the issue we saw
+in the previous implementation.
+</p>
+
+<p>
+<code>lasync/pool</code> returns a <code>ThreadPoolExecutor</code> so it plugs right in to
+our <code>pmap*</code> implementation.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>require '<span style="color: #6c3163;">[</span>lasync.core <span style="color: #4e3163;">:as</span> lasync<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">pool</span> <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">lasync</span>/pool <span style="color: #4e3163;">:threads</span> <span style="color: #4e3163;">2</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>pmap* pool api-call! <span style="color: #6c3163;">(</span>range <span style="color: #4e3163;">10</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orged53369" class="outline-3">
+<h3 id="orged53369">Alternative implementations</h3>
+<div class="outline-text-3" id="text-orged53369">
+<p>
+If you don't want to implement anything yourself, including <code>pmap</code>,
+and perhaps need a richer API, which for example doesn't guarantee
+ordering, or supports parallel list comprehensions (<code>for</code>), take a
+look at <a href="https://github.com/TheClimateCorporation/claypoole">TheClimateCorporation/claypoole</a>
+</p>
+
+<p>
+Usage is very straightforward:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>require '<span style="color: #6c3163;">[</span>com.climate.claypoole <span style="color: #4e3163;">:as</span> cp<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">pool</span> <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">cp</span>/threadpool <span style="color: #4e3163;">4</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">output</span> <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">cp</span>/pmap pool api-call! <span style="color: #2d9574;">(</span>range <span style="color: #4e3163;">64</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org22d4763" class="outline-2">
+<h2 id="org22d4763">core.async</h2>
+<div class="outline-text-2" id="text-org22d4763">
+<p>
+Same solutions which used the executor can be implemented with
+different abstractions and contexts. An interesting one is core.async,
+which allows us to use pipelines for sequence processing. If we look
+at each batch as a sequence, the following implementation arises
+naturally:
+</p>
+</div>
+
+<div id="outline-container-org15b1dcf" class="outline-3">
+<h3 id="org15b1dcf">pipeline</h3>
+<div class="outline-text-3" id="text-org15b1dcf">
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>require '<span style="color: #6c3163;">[</span>clojure.core.async <span style="color: #4e3163;">:as</span> async<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">parallel</span>
+  <span style="color: #da8b55;">"Returns a channel which will contain a transient vector of results"</span>
+  <span style="color: #6c3163;">(</span><span style="color: #2d9574;">[</span>n f xs<span style="color: #2d9574;">]</span>
+   <span style="color: #2d9574;">(</span>parallel <span style="color: #4e3163;">nil</span> n f xs<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span>
+  <span style="color: #6c3163;">(</span><span style="color: #2d9574;">[</span>buf-or-n n f xs<span style="color: #2d9574;">]</span>
+   <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #67b11d;">[</span>out <span style="color: #b1951d;">(</span><span style="color: #ba2f59; font-weight: bold;">async</span>/chan<span style="color: #b1951d;">)</span><span style="color: #67b11d;">]</span>
+     <span style="color: #67b11d;">(</span><span style="color: #ba2f59; font-weight: bold;">async</span>/pipeline-blocking
+      n
+      out
+      <span style="color: #b1951d;">(</span>map f<span style="color: #b1951d;">)</span>
+      <span style="color: #b1951d;">(</span><span style="color: #ba2f59; font-weight: bold;">async</span>/to-chan xs<span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span>
+     <span style="color: #67b11d;">(</span><span style="color: #ba2f59; font-weight: bold;">async</span>/reduce conj! <span style="color: #b1951d;">(</span>transient <span style="color: #3a81c3;">[]</span><span style="color: #b1951d;">)</span> out<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">ch</span> <span style="color: #6c3163;">(</span>parallel <span style="color: #4e3163;">4</span> api-call! <span style="color: #2d9574;">(</span>range <span style="color: #4e3163;">16</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>persistent! <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">async</span>/&lt;!! ch<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15]</span>
+</pre>
+</div>
+
+<p>
+If <code>api-call!</code> had been asynchronous <code>pipeline-blocking</code> can be
+swapped for <code>pipeline-async</code>, and instead of a transducer:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163; font-weight: bold;">af</span> <span style="color: #6c3163;">[</span>v c<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span>api-call!
+   v
+   <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163; font-weight: bold;">cb</span> <span style="color: #67b11d;">[</span>res<span style="color: #67b11d;">]</span> <span style="color: #67b11d;">(</span><span style="color: #ba2f59; font-weight: bold;">async</span>/put! c res<span style="color: #67b11d;">)</span> <span style="color: #67b11d;">(</span><span style="color: #ba2f59; font-weight: bold;">async</span>/close! c<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+A slight problem with the above implementation is that it has higher
+overhead than previous ones. It allocates plenty of channels, new
+<code>async/thread</code> s for each call, which isn't completely terrible as it
+uses a cached thread pool, and requires working with channels all the
+way.
+</p>
+
+<p>
+It's probably a suitable solution if your entire code base is already
+written in the abstraction, otherwise I'm not sure I'd go with it.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org5b0a744" class="outline-3">
+<h3 id="org5b0a744">Thread Pool</h3>
+<div class="outline-text-3" id="text-org5b0a744">
+<p>
+If you're using core.async and haven't read
+<a href="http://danboykis.com/posts/things-i-wish-i-knew-about-core-async/">Things I Wish I knew about core.async</a> take a few extra minutes of
+your day to read it. Building off the final example in the post:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">async-wrapper</span> <span style="color: #6c3163;">[</span>pool f<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #2d9574;">[</span>ch <span style="color: #67b11d;">(</span><span style="color: #ba2f59; font-weight: bold;">async</span>/chan <span style="color: #4e3163;">1</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">]</span>
+    <span style="color: #2d9574;">(</span>.submit
+     pool
+     <span style="color: #67b11d;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #b1951d;">[]</span>
+       <span style="color: #b1951d;">(</span><span style="color: #3a81c3; font-weight: bold;">try</span> <span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">async</span>/put! ch <span style="color: #6c3163;">(</span>f<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+            <span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">catch</span> Exception e <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">async</span>/put! ch <span style="color: #2d9574;">(</span>ex-info <span style="color: #2d9574;">"some error"</span> <span style="color: #887070;">{}</span> e<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+            <span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">finally</span> <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">async</span>/close! ch<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span><span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span>
+    ch<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defmacro</span> <span style="color: #6c3163; font-weight: bold;">asyncly</span>
+  <span style="color: #6c3163;">[</span>pool &amp; body<span style="color: #6c3163;">]</span>
+  `<span style="color: #6c3163;">(</span>async-wrapper ~pool <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">fn*</span> <span style="color: #67b11d;">[]</span> ~@body<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">-&gt;&gt;</span> <span style="color: #6c3163;">(</span>range <span style="color: #4e3163;">8</span><span style="color: #6c3163;">)</span>
+     <span style="color: #6c3163;">(</span>mapv #<span style="color: #2d9574;">(</span>asyncly @default-pool <span style="color: #67b11d;">(</span>api-call! <span style="color: #715ab1;">%</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span>
+     <span style="color: #ba2f59; font-weight: bold;">async</span>/merge
+     <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">async</span>/reduce conj <span style="color: #2d9574;">[]</span><span style="color: #6c3163;">)</span>
+     <span style="color: #ba2f59; font-weight: bold;">async</span>/&lt;!!<span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; [1 0 3 2 4 5 6 7]</span>
+</pre>
+</div>
+
+<p>
+This example nicely ties together everything we've seen until now.
+Pay attention that it does not preserve order.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orga4aa65c" class="outline-2">
+<h2 id="orga4aa65c">Promesa</h2>
+<div class="outline-text-2" id="text-orga4aa65c">
+<p>
+Promesa is a promise library for Clojure and ClojureScript, with
+pretty light overhead.
+</p>
+
+<p>
+Promesa does not just provide facilities for concurrent execution, but
+models them as Effect types, thus providing a very human friendly
+transition between the following:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-haskell"><span style="color: #2aa1ae; background-color: #ecf3ec;">-- </span><span style="color: #2aa1ae; background-color: #ecf3ec;">start with</span>
+<span style="color: #6c3163; font-weight: bold;">f</span> <span style="color: #715ab1;">::</span> a <span style="color: #715ab1;">-&gt;</span> b
+<span style="color: #2aa1ae; background-color: #ecf3ec;">-- </span><span style="color: #2aa1ae; background-color: #ecf3ec;">mapping it</span>
+<span style="color: #6c3163; font-weight: bold;">f'</span> <span style="color: #715ab1;">::</span> <span style="color: #3a81c3;">[</span>a<span style="color: #3a81c3;">]</span> <span style="color: #715ab1;">-&gt;</span> <span style="color: #3a81c3;">[</span>b<span style="color: #3a81c3;">]</span>
+
+<span style="color: #6c3163; font-weight: bold;">f''</span> <span style="color: #715ab1;">::</span> <span style="color: #3a81c3;">[</span>a<span style="color: #3a81c3;">]</span> <span style="color: #715ab1;">-&gt;</span> <span style="color: #3a81c3;">[</span><span style="color: #ba2f59; font-weight: bold;">Future</span> b<span style="color: #3a81c3;">]</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">-- </span><span style="color: #2aa1ae; background-color: #ecf3ec;">map api-call+ [a]</span>
+<span style="color: #6c3163; font-weight: bold;">g</span> <span style="color: #715ab1;">::</span> <span style="color: #3a81c3;">[</span><span style="color: #ba2f59; font-weight: bold;">Future</span> b<span style="color: #3a81c3;">]</span> <span style="color: #715ab1;">-&gt;</span> <span style="color: #ba2f59; font-weight: bold;">Future</span> <span style="color: #3a81c3;">[</span>b<span style="color: #3a81c3;">]</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">-- </span><span style="color: #2aa1ae; background-color: #ecf3ec;">all</span>
+<span style="color: #6c3163; font-weight: bold;">h</span> <span style="color: #715ab1;">::</span> <span style="color: #ba2f59; font-weight: bold;">Future</span> <span style="color: #3a81c3;">[</span>b<span style="color: #3a81c3;">]</span> <span style="color: #715ab1;">-&gt;</span> <span style="color: #3a81c3;">[</span>b<span style="color: #3a81c3;">]</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">-- </span><span style="color: #2aa1ae; background-color: #ecf3ec;">deref</span>
+</pre>
+</div>
+
+<p>
+(Any Haskellers who want to shout at me or correct me for the mess I
+wrote here are welcome, I promise to correct it based on your feedback)
+</p>
+
+<p>
+See the <a href="https://cljdoc.org/d/funcool/promesa/5.1.0/doc/user-guide">documentation</a>
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>require '<span style="color: #6c3163;">[</span>promesa.core <span style="color: #4e3163;">:as</span> p<span style="color: #6c3163;">]</span> '<span style="color: #6c3163;">[</span>promesa.exec <span style="color: #4e3163;">:as</span> exec<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">xs</span> <span style="color: #6c3163;">(</span>vec <span style="color: #2d9574;">(</span>range <span style="color: #4e3163;">32</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">api-call+</span>
+  <span style="color: #6c3163;">[</span>ex x<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">p</span>/then <span style="color: #2d9574;">(</span><span style="color: #ba2f59; font-weight: bold;">p</span>/promise x<span style="color: #2d9574;">)</span> api-call! ex<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">ex</span> <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">exec</span>/fixed-pool <span style="color: #4e3163;">4</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">p</span> <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">p</span>/all <span style="color: #2d9574;">(</span>map <span style="color: #67b11d;">(</span>partial api-call+ ex<span style="color: #67b11d;">)</span> xs<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+@p<span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; [0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31]</span>
+</pre>
+</div>
+
+<p>
+Promesa Just Works and has light overhead, and would be my pick in
+most use cases.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgc203447" class="outline-2">
+<h2 id="orgc203447">Manifold</h2>
+<div class="outline-text-2" id="text-orgc203447">
+<p>
+Manifold's deferred abstraction is pretty similar to Promesa's
+promises, with slightly higher overhead.
+It also offers a stream abstraction which isn't necessarily relevant
+for this discussion.
+</p>
+
+<p>
+See the <a href="https://github.com/ztellman/manifold">documentation</a>
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>require '<span style="color: #6c3163;">[</span>manifold.deferred <span style="color: #4e3163;">:as</span> d<span style="color: #6c3163;">]</span>
+         '<span style="color: #6c3163;">[</span>manifold.executor <span style="color: #4e3163;">:as</span> e<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">ex</span> <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">e</span>/fixed-thread-executor <span style="color: #4e3163;">4</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">manifold-api-call</span>
+  <span style="color: #6c3163;">[</span>ex x<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #2d9574;">[</span>d <span style="color: #67b11d;">(</span><span style="color: #ba2f59; font-weight: bold;">d</span>/<span style="color: #3a81c3; font-weight: bold;">deferred</span> <span style="color: #6c3163; font-weight: bold;">ex</span><span style="color: #67b11d;">)</span>
+        c <span style="color: #67b11d;">(</span><span style="color: #ba2f59; font-weight: bold;">d</span>/chain d #<span style="color: #b1951d;">(</span>future <span style="color: #3a81c3;">(</span>api-call! <span style="color: #715ab1;">%</span><span style="color: #3a81c3;">)</span><span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">]</span>
+    <span style="color: #2d9574;">(</span><span style="color: #ba2f59; font-weight: bold;">d</span>/success! d x<span style="color: #2d9574;">)</span>
+    c<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">out</span> <span style="color: #6c3163;">(</span>apply <span style="color: #ba2f59; font-weight: bold;">d</span>/zip <span style="color: #2d9574;">(</span>mapv <span style="color: #67b11d;">(</span>partial manifold-api-call ex<span style="color: #67b11d;">)</span> <span style="color: #67b11d;">(</span>range <span style="color: #4e3163;">32</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org988b679" class="outline-2">
+<h2 id="org988b679">Summary</h2>
+<div class="outline-text-2" id="text-org988b679">
+</div>
+<div id="outline-container-orgb9a7587" class="outline-3">
+<h3 id="orgb9a7587">Similarities</h3>
+<div class="outline-text-3" id="text-orgb9a7587">
+</div>
+<div id="outline-container-orgdf5467b" class="outline-4">
+<h4 id="orgdf5467b">Promesa and Manifold</h4>
+<div class="outline-text-4" id="text-orgdf5467b">
+<p>
+both operate on deferred values, and have the option of lifting a
+sequence of deferred values into a single deferred value of the
+sequence.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org1c9051c" class="outline-3">
+<h3 id="org1c9051c">Differences</h3>
+<div class="outline-text-3" id="text-org1c9051c">
+</div>
+<div id="outline-container-orga211fc6" class="outline-4">
+<h4 id="orga211fc6">Monads vs. Java</h4>
+<div class="outline-text-4" id="text-orga211fc6">
+<p>
+Promesa and Manifold are "up there" in a monadic world of effect
+types while the Java leaning implementations are more "just get
+things done" solutions. More mechanical.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgcba7e14" class="outline-4">
+<h4 id="orgcba7e14">core.async vs. everything else</h4>
+<div class="outline-text-4" id="text-orgcba7e14">
+<p>
+The core.async solutions is the most mechanical and out of the
+common abstractions which already exist in Clojure (map,
+executors).
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org8f483f1" class="outline-3">
+<h3 id="org8f483f1">Retrospective</h3>
+<div class="outline-text-3" id="text-org8f483f1">
+</div>
+<div id="outline-container-orge8286aa" class="outline-4">
+<h4 id="orge8286aa">The Clojuriest</h4>
+<div class="outline-text-4" id="text-orge8286aa">
+<p>
+Of all available solutions the most Clojure-y ones are definitely
+<a href="https://github.com/tolitius/lasync">tolitius/lasync</a> and <a href="https://github.com/TheClimateCorporation/claypoole">TheClimateCorporation/claypoole</a>. Claypoole
+especially provides an almost drop-in replacement for your bad code.
+</p>
+
+<p>
+This should probably be your go-to option when trying to clean up
+any misuses of <code>pmap</code>, <code>doall</code>, or any other idiosyncrasies.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org6c905ef" class="outline-4">
+<h4 id="org6c905ef">The comfiest</h4>
+<div class="outline-text-4" id="text-org6c905ef">
+<p>
+I have to admit I like Promesa. The abstraction is comfortable and
+lends itself well to a code base which relies on asynchronous
+computation. It also plays well with funcool's other library,
+<code>cats</code>, which implements category theory concepts in Clojure.
+</p>
+</div>
+</div>
+</div>
+</div>
