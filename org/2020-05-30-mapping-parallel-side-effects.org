@@ -352,9 +352,14 @@ Clojure
   transition between the following:
 
   #+begin_src haskell
-    f :: [a] -> [Future<a>] -- map api-call+ [a]
-    g :: [Future<a>] -> Future<[a]> -- all
-    h :: Future<[a]> -> [a] -- deref
+    -- start with
+    f :: a -> b
+    -- mapping it
+    f' :: [a] -> [b]
+
+    f'' :: [a] -> [Future b] -- map api-call+ [a]
+    g :: [Future b] -> Future [b] -- all
+    h :: Future [b] -> [b] -- deref
   #+end_src
 
   (Any Haskellers who want to shout at me or correct me for the mess I
@@ -437,6 +442,9 @@ Clojure
     Of all available solutions the most Clojure-y ones are definitely
     [[https://github.com/tolitius/lasync][tolitius/lasync]] and [[https://github.com/TheClimateCorporation/claypoole][TheClimateCorporation/claypoole]]. Claypoole
     especially provides an almost drop-in replacement for your bad code.
+
+    This should probably be your go-to option when trying to clean up
+    any misuses of ~pmap~, ~doall~, or any other idiosyncrasies.
 
 *** The comfiest
 
