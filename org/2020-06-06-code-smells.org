@@ -253,6 +253,22 @@ Happy hacking.
      (prune-nils {:a 1 :b nil :c 2 :d nil}) ;; => {:a 1, :c 2}
    #+end_src
 
+** Beware of ~merge~ Where Performance Matters
+   
+   ~merge~ is clear and easy to work with, but has terrible performance.
+
+   If you're more interested in the performance side of things, watch
+   [[https://www.youtube.com/watch?v=3SSHjKT3ZmA][this talk]].
+   
+   Keep in mind while reading the following sections that using ~merge~
+   and ~select-keys~ come at a price. While the general advice is to
+   avoid doing things manually, every rule has an exception.
+   
+   Be aware there are [[https://github.com/bsless/clj-fast][alternatives]] as well, but ~merge~ still performs
+   poorly in general.
+   
+   Thanks to [[https://twitter.com/borkdude][Borkdude]] for highlighting this issue quickly.
+
 ** Avoid Manual Merge
 
    The below piece of code conditionally merges ~m2~ into ~m1~ when the
@@ -289,9 +305,6 @@ Happy hacking.
      (merge (select-keys m1 [:a])
             (select-keys m2 [:b]))
    #+end_src
-
-   Just one word of warning, using ~merge~ and ~select-keys~ on a hot
-   code path might not be desirable due to performance concerns.
 
 ** Conditional Build-Up
 

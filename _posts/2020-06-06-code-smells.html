@@ -365,6 +365,35 @@ Both implementations are valid:
 </div>
 </div>
 
+<div id="outline-container-org84e6f66" class="outline-3">
+<h3 id="org84e6f66">Beware of <code>merge</code> Where Performance Matters</h3>
+<div class="outline-text-3" id="text-org84e6f66">
+<p>
+<code>merge</code> is clear and easy to work with, but has terrible performance.
+</p>
+
+<p>
+If you're more interested in the performance side of things, watch
+<a href="https://www.youtube.com/watch?v=3SSHjKT3ZmA">this talk</a>.
+</p>
+
+<p>
+Keep in mind while reading the following sections that using <code>merge</code>
+and <code>select-keys</code> come at a price. While the general advice is to
+avoid doing things manually, every rule has an exception.
+</p>
+
+<p>
+Be aware there are <a href="https://github.com/bsless/clj-fast">alternatives</a> as well, but <code>merge</code> still performs
+poorly in general.
+</p>
+
+<p>
+Thanks to <a href="https://twitter.com/borkdude">Borkdude</a> for highlighting this issue quickly.
+</p>
+</div>
+</div>
+
 <div id="outline-container-org0fccbfe" class="outline-3">
 <h3 id="org0fccbfe">Avoid Manual Merge</h3>
 <div class="outline-text-3" id="text-org0fccbfe">
@@ -419,11 +448,6 @@ Again, this can usually involve pretty big maps. Instead, try to:
        <span style="color: #6c3163;">(</span>select-keys m2 <span style="color: #2d9574;">[</span><span style="color: #4e3163;">:b</span><span style="color: #2d9574;">]</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
 </pre>
 </div>
-
-<p>
-Just one word of warning, using <code>merge</code> and <code>select-keys</code> on a hot
-code path might not be desirable due to performance concerns.
-</p>
 </div>
 </div>
 
