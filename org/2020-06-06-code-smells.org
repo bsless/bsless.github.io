@@ -1,0 +1,670 @@
+#+TITLE: Idiomatic Clojure: Code Smells
+
+#+OPTIONS: toc:nil num:nil
+#+BEGIN_EXPORT html
+---
+layout: post
+title: "Idiomatic Clojure: Code Smells"
+permalink: /:title/
+tags: [clojure, "idiomatic clojure" ,"code smells"]
+categories: [clojure, "idiomatic clojure", "code smells"]
+---
+#+END_EXPORT
+
+We all make mistakes. We have all written bad pieces of code at some
+point of our lives. They might have been non-idiomatic, unreadable, or
+had bad performance.
+
+This post catalogs all the little things which sit down at the bottom of
+your code, accumulate like dust, and when taken in as a whole, clog down
+the code base. It's important to remember code is read more than it is
+edited, and is not only a way for us to communicate with the computer,
+but with other programmers (including ourselves in the future).
+
+Hopefully the advice in this post will help you recognize all those
+little code smells and write more readable, maintainable code.
+
+Happy hacking.
+
+* Mapping
+
+** ~mapcat~ To The Rescue
+
+   Sometimes you need to concat the results of mapping. Using ~mapcat~
+   is an idiomatic option for this case:
+
+   #+begin_src clojure
+     ;;; Don't                       Do
+     (apply concat (map f xs))  =>  (mapcat xs)
+   #+end_src
+
+** What Is It For?
+
+   Avoid trivial ~for~ (list comprehensions)
+
+   #+begin_src clojure
+     ;;; Don't                Do
+     (for [x xs] (f x))  =>  (map f xs)
+   #+end_src
+
+   And yes, I've seen a combination of both:
+
+   #+begin_src clojure
+     ;;; Please Don't
+     (apply concat (for [x xs] (f x)))
+   #+end_src
+
+** Trivial Lambda
+
+   There's no reason to wrap a function in an anonymous function:
+
+   #+begin_src clojure
+     ;;; Don't             Do
+     (map #(f %) xs)  =>  (map f xs)
+   #+end_src
+
+** Realize When Collections Want To Be Associative
+   
+   If you find yourself scanning collections of maps looking for a map
+   where a certain key has a certain value, your collection might be
+   telling you it wants to be associative, not sequential:
+   
+   #+begin_src clojure
+     (def people
+       [{:person/name "Fred"}
+        {:person/name "Ethel"}
+        {:person/name "Lucy"}])
+
+     (defn person-in-people?
+       [person people]
+       (some #(= person (:person/name %)) people))
+
+     (person-in-people? "Fred" people);; => true
+     (person-in-people? "Bob" people) ;; => nil
+
+   #+end_src
+   
+   Instead, index the collection according to the parameter which
+   interests you:
+   
+   #+begin_src clojure
+     (def collected-people
+       (clojure.set/index people [:person/name]))
+
+     (contains? collected-people {:person/name "Fred"});; => true
+     (contains? collected-people {:person/name "Bob"}) ;; => false
+   #+end_src
+   
+   This code is readable: "Does ~collected-people~ contain a person
+   who's name is Bob?".
+
+   You can also index it yourself:
+   #+begin_src clojure
+     (defn index
+       [xs k]
+       (reduce
+        (fn [m x]
+          (let [ik (get x k)]
+            (assoc m ik (conj (get m ik #{}) x)))) {} xs))
+
+     (def collected-people
+       (index people :person/name))
+
+     (contains? collected-people "Fred");; => true
+     (contains? collected-people "Bob") ;; => false
+   #+end_src
+   
+   If you repeatedly filter according to certain attributes, you might
+   want to index according to them, too, with ~group-by~ or
+   ~clojure.set/index~.
+
+   An important distinction between group-by and index, is that group-by
+   indexes according to a function, so you can presumably bin values as
+   well, for example, by age or height, while index works specifically
+   with keys.
+
+* Filtering
+
+  This problem is similar to a trivial lambda, just wrapped in negation.
+  Remember ~remove~ is the negated case of ~filter~:
+
+  #+begin_src clojure
+    ;;; Don't                      Do
+    (filter #(not (p %)) xs)  =>  (remove p xs)
+    (remove #(not (p %)) xs)  =>  (filter p xs)
+  #+end_src
+
+* Sequence navigation
+
+  Sometimes you need to dig into elements in a sequence. Plenty of users
+  aren't familiar with the concise versions:
+
+  #+begin_src clojure
+    ;;; Don't               Do
+    (first (first xs)) =>  (ffirst xs)
+    (first (next xs))  =>  (fnext xs)
+    (next (first xs))  =>  (nfirst xs)
+    (next (next xs))   =>  (nnirst xs)
+  #+end_src
+
+  Sort of like ~cadr~ but makes more sense.
+
+* Emptiness
+
+  The concept of emptiness is tricky in Clojure. Did you know ~nil~ is
+  also empty? What defines an empty sequence? How can we know if a lazy
+  unrealized sequence is empty? Do we ~count~ it? What if it's infinite?
+
+  To begin with, let's look at what ~empty?~ actually does:
+
+  #+begin_src clojure
+    (defn empty?
+      "Returns true if coll has no items - same as (not (seq coll)).
+      Please use the idiom (seq x) rather than (not (empty? x))"
+      [coll] (not (seq coll)))
+  #+end_src
+
+  If you have eyes to see, you notice the docstring and know exactly
+  where this is going:
+
+  Don't use ~(not (empty? x))~!
+
+  You've probably seen or written at least one of the following
+  examples:
+
+  #+begin_src clojure
+    ;;; Don't                        Do
+    (when (not (empty? x)) ...)  => (when (seq x) ...)
+    (when-not (empty? x) ...)    => (when (seq x) ...)
+    (when (= 0 (count x)) ...)   => (when (empty? x) ...)
+    (when (< 0 (count x)) ...)   => (when (seq x) ...)
+  #+end_src
+
+* Into ~into~
+
+  ~into~ is a pretty useful function, but one often abused.
+
+  The (mis)usage of ~into~ can usually be broken to three distinct
+  cases:
+
+** Type Transformations
+
+   #+begin_src clojure
+     ;;; Don't           Do
+     (into [] xs)   =>  (vec xs)
+     (into #{} xs)  =>  (set xs)
+   #+end_src
+
+** Map Mapping
+
+   #+begin_src clojure
+     ;;; Don't
+     (into {} (map (fn [[k v]] [k (f v)]) m))
+     (into {} (for [[k v] m] [k (f v)]))
+     ;;; Do
+     (reduce-kv (fn [m k v] (assoc m k (f v))) {} m)
+     ;;; Or faster* but less pretty
+     (persistent!
+      (reduce-kv (fn [m k v] (assoc! m k (f v))) (transient {}) m))
+   #+end_src
+
+   Don't write it out manually every time. Turn it into a function and
+   throw it into one of half-dozen util namespaces.
+
+   NOTE: the benefits from the transient version increase with the size
+   of the input. For very small maps, the non-transient version is
+   faster.
+
+** Not Using The Transducer API
+
+   #+begin_src clojure
+     ;;; Don't                       Do
+     (into coll (map f xs))     =>  (into coll (map f) xs)
+     (into coll (filter p xs))  =>  (into coll (filter p) xs)
+   #+end_src
+
+* Working With Maps
+
+** The Value Of Nothing
+
+   Clojure maps are [[https://www.youtube.com/watch?v=YR5WdGrpoug][collections, not slots]]. Combined with ~nil~'s
+   meaning being "nothing", ~nil~ values inside maps are confusing:
+
+   #+begin_src clojure
+     (get {:a nil} :a) ;; => nil
+     (get {:b 111} :a) ;; => nil
+   #+end_src
+
+   Try to avoid inserting ~nil~ values into a map.
+
+   If it is not a map you control, you can always prune it.
+
+   Both implementations are valid:
+
+   #+begin_src clojure
+     (defn assoc-some [m k v] (if (nil? v) m (assoc m k v)))
+     (defn prune-nils [m] (reduce-kv assoc-some {} m))
+
+     (prune-nils {:a 1 :b nil :c 2 :d nil}) ;; => {:a 1, :c 2}
+
+     (defn remove-nil [m k v] (if (nil? v) (dissoc m k) m))
+     (defn prune-nils [m] (reduce-kv remove-nil m m))
+
+     (prune-nils {:a 1 :b nil :c 2 :d nil}) ;; => {:a 1, :c 2}
+   #+end_src
+
+** Avoid Manual Merge
+
+   The below piece of code conditionally merges ~m2~ into ~m1~ when the
+   values in ~m2~ are not ~nil~:
+
+   #+begin_src clojure
+     (let [m1 {}
+           m1 (if (nil? (:k m2)) m1 (assoc m1 :k (:k m2)))])
+   #+end_src
+
+   Imagine it being done for every key in ~m2~. There can be 20 Keys.
+   Who can even make sense of the important parts of the code
+   afterwards?
+
+   Instead, combine nil pruning with merge, as two steps of
+   understandable data transformations:
+
+   #+begin_src clojure
+     (merge m1 (prune-nils m2))
+   #+end_src
+
+** Avoid Manual Key Selection
+
+   I see this usually going hand-in-hand with manual merges:
+
+   #+begin_src clojure
+     {:a (:a m1)
+      :b (:b m2)}
+   #+end_src
+
+   Again, this can usually involve pretty big maps. Instead, try to:
+
+   #+begin_src clojure
+     (merge (select-keys m1 [:a])
+            (select-keys m2 [:b]))
+   #+end_src
+
+   Just one word of warning, using ~merge~ and ~select-keys~ on a hot
+   code path might not be desirable due to performance concerns.
+
+** Conditional Build-Up
+
+   I often see this pattern repeating itself:
+
+   #+begin_src clojure
+     (defn foo
+       [in]
+       (let [m {:k0 (f0 in)} ;; mandatory
+             m (if (p1 in) (assoc m :k1 (f1 in)) m) ;; optional
+             m (if (p2 in) (assoc m :k2 (f2 in)) m)]
+         m))
+   #+end_src
+
+   Instead, use ~cond->~:
+
+   #+begin_src clojure
+     (defn foo
+       [in]
+       (cond-> {:k0 (f0 in)} ;; mandatory
+         (p1 in) (assoc :k1 (f1 in)) ;; optional
+         (p2 in) (assoc :k2 (f2 in))))
+   #+end_src
+
+   This way, flow control turns into syntax and there's no state to keep
+   track of.
+
+* Numbers!
+
+  Clojure has functions covering some common use cases when working with
+  numbers which both perform and convey intent better.
+
+** Absolute Zero
+
+   #+begin_src clojure
+     ;;; Don't     Do
+     (= 0 x)  =>  (zero? x)
+     (> x 0)  =>  (pos? x)
+     (< x 0)  =>  (neg? x)
+   #+end_src
+
+** One Away
+
+   #+begin_src clojure
+     ;;; Don't     Do
+     (+ 1 x)  =>  (inc x)
+     (- 1 x)  =>  (dec x)
+   #+end_src
+
+* Truth Be Told
+
+  Same case with numbers, no need to compare to booleans and nil.
+
+  #+begin_src clojure
+    ;;; Don't          Do
+    (= true x)   =>   (true? x)
+    (= false x)  =>   (false? x)
+    (= nil x)    =>   (nil? x)
+  #+end_src
+
+* ~doall~
+
+  ~doall~ is a macro which forcefully realizes lazy sequences. It should
+  not be used in production.
+
+  See my previous posts regarding alternative to ~doall~ in a [[https://bsless.github.io/side-effects/][single
+  threaded]] and a [[https://bsless.github.io/mapping-parallel-side-effects/][multi-threaded]] context.
+
+  on a side note, I hope you never see something like: ~(doall (doseq [x xs] ..))~.
+  It's wrong on two levels
+  - ~doseq~ is already strict
+  - ~doseq~ returns nothing, so there's nothing to ~doall~
+
+* Style
+
+** Implicit ~do~ blocks
+
+   Some expressions have implicit ~do~ blocks in them, making it
+   unnecessary to use a ~do~ block.
+
+*** when
+
+    #+begin_src clojure
+      ;;; Don't
+      (when test
+        (do expr1
+            expr2))
+
+      ;;; Do
+      (when test
+        expr1
+        expr2)
+    #+end_src
+
+*** let
+
+    #+begin_src clojure
+      ;;; Don't
+      (let bindings
+        (do expr1
+            expr2))
+
+      ;;; Do
+      (let bindings
+        expr1
+        expr2)
+    #+end_src
+
+*** Function body
+
+    #+begin_src clojure
+      ;;; Don't
+      (fn []
+        (do expr1
+            expr2))
+
+      ;;; Do
+      (fn []
+        expr1
+        expr2)
+    #+end_src
+
+*** More
+
+    Same goes for ~try~, ~catch~, and any other macro with a type
+    signature ~& body~.
+
+** Threading
+
+   Avoid trivial threading:
+
+   #+begin_src clojure
+     (-> x f)     => (f x)
+     (-> x (f a)) => (f x a)
+   #+end_src
+
+   And remember to [[https://stuartsierra.com/2018/07/06/threading-with-style][thread with style]]:
+
+   - ~->~ is for collections
+   - ~->>~ is for sequences
+
+*** Thread Instead Of A Deep Call Stack
+
+    Deep call stacks tie implementations together and make testing more
+    difficult as the input space becomes larger instead of smaller by
+    successive function calls.
+
+    They take atomic and understandable data transformation functions
+    and make them opaque.
+
+    #+begin_src clojure
+      ;;; Don't
+      (defn h [x] ...)
+      (defn g [x] ... (h x))
+      (defn f [x] ... (g x))
+
+      ;;; Do
+      (-> x f g h)
+    #+end_src
+
+*** ~some->~
+
+    Nested when/let can be converted to ~some->~
+
+    #+begin_src clojure
+      ;;; Don't
+      (when-let [x1 (f0 x0)]
+        (when-let [x2 (f1 x1)]
+          (when-let [x3 (f2 x2)]
+            (f3 x3))))
+
+      ;;; Do
+      (some-> x0 f0 f1 f2 f3)
+    #+end_src
+
+    Same goes for this structure:
+
+    #+begin_src clojure
+      ;;; Don't
+      (let [x (if (nil? x) nil (x f0))
+            x (if (nil? x) nil (x f1))
+            x (if (nil? x) nil (x f2))]
+        (if (nil? x) nil (f3 x)))
+
+      ;;; Do
+      (some-> x0 f0 f1 f2 f3)
+    #+end_src
+
+*** ~cond->~
+
+    #+begin_src clojure
+      (let [x (if (p0 x) (f0 x) x)
+            x (if (p1 x) (f1 x) x)]
+        (if (p2 x) (f2 x) x))
+    #+end_src
+
+    #+begin_src clojure
+      (cond-> x
+        (p0 x) f0
+        (p1 x) f1
+        (p2 x) f2)
+    #+end_src
+
+    The only subtle difference to keep in mind that the predicates can't
+    depend on the result of the previous computation stage.
+
+    We can achieve that behavior with a slight modification to ~cond->~:
+
+    #+begin_src clojure
+      (defmacro cond*->
+        [expr & clauses]
+        (assert (even? (count clauses)))
+        (let [g (gensym)
+              steps (map (fn [[test step]] `(if (-> ~g ~test) (-> ~g ~step) ~g))
+                         (partition 2 clauses))]
+          `(let [~g ~expr
+                 ~@(interleave (repeat g) (butlast steps))]
+             ~(if (empty? steps)
+                g
+                (last steps)))))
+
+      (cond*-> x
+               p0 f0
+               p1 f1
+               p2 f2)
+    #+end_src
+
+*** ~let~ Shadowing
+
+    There's usually very little reason to shadow a binding inside a ~let~ body:
+
+    #+begin_src clojure
+      (let [x (f0 x)
+            x (f1 x)
+            x (f2 x)]
+        (f3 x))
+    #+end_src
+
+    Should be:
+
+    #+begin_src clojure
+      (-> x f0 f1 f2 f3)
+    #+end_src
+
+** Nested Forms
+
+   Plenty of macros with binding forms don't need to be nested:
+
+   #+begin_src clojure
+     ;;; Don't
+     (let [x 1]
+       (let [y 2]
+         [x y]))
+
+     ;; Do
+     (let [x 1
+           y 2]
+       [x y])
+   #+end_src
+
+   A special case is that of nested iteration:
+
+   #+begin_src clojure
+     ;;; Don't
+     (doseq [x xs]
+       (doseq [y ys]
+         (println x y)))
+
+     ;;; Do
+     (doseq [x xs
+             y ys]
+       (println x y))
+   #+end_src
+
+** Trivial Mapping Wrappers
+   
+   We can sometimes find the following form in code, of do-one-thing
+   then do-one-thing-n-times:
+   
+   #+begin_src clojure
+     (defn build-person [x] ...)
+     (defn build-persons [xs] (map build-person xs))
+   #+end_src
+   
+   It may not be immediately apparent why it's a code smell.
+
+   - It ties implementation to concretion. Now the entire code will be
+     in the context of a sequence of things and not thinking about one
+     thing at a time. We have to mentally jump back and forth between
+     the collection of things and one thing.
+   - Fragile: we might end up adding more logic to ~build-persons~,
+     which makes us nominative liars, since the name doesn't match what
+     it does anymore. This change now won't be reflected across the
+     system by anyone using only the singular function.
+   - Composes badly: had we wanted to compose several singular
+     functions, we could have just used a threading macro or ~comp~ and
+     be done with it. To compose for a sequential use case we could have
+     used transducers. Now we are tied to a sequential concretion.
+   - Less reusable: due to all of the above, once a singular function
+     has been dragged to the plural context, we decrease the chances of
+     being able to reuse the singular from one side, and tie the plural
+     down with further details which prevent usage in other contexts, or
+     would necessitate ugly hacks, like mapping it on a sequence with
+     one element.
+
+
+** Positional Arguments
+
+*** Avoid An Explosion In Input Arguments
+    
+    If your functions take a very large number of arguments, suspect
+    they should be broken apart, because it's unlikely all arguments are
+    used simultaneously.
+    
+    #+begin_src clojure
+      (defn f
+        [fizz buzz foo bar quux ohgod enough])
+    #+end_src
+
+*** Prefer A map To Key-Value Rest Arguments
+
+    #+begin_src clojure
+      (defn f
+        ([x y]
+         (f x y :a 1 :b 2))
+        ([x y & {a :a b :b}]
+         ,,,))
+
+      (f x y :a 3 :b 4)
+
+      ;;; vs.
+
+      (defn f
+        ([x y]
+         (f x y {:a 1 :b 2}))
+        ([x y {a :a b :b}]
+        ,,,))
+
+      (f x y {:a 3 :b 4})
+    #+end_src
+    
+    The main reason for this is when you wish to pass the function
+    around as a higher order function you need to be mindful of the type
+    of the tail arguments, make sure they always get unpacked, and
+    remember to usually ~apply~ everywhere. This is easily avoided by
+    using the second style.
+
+*** Prefer Returning Maps Over Returning Positional Values
+    
+    Using positional return values encodes meaning to indices, giving
+    semantic or business meaning to indices/ordering. It's better to
+    encode that meaning as explicit keywords:
+    
+    #+begin_src clojure
+      (defn sieve
+        [p xs]
+        [(filter p xs) (remove p xs)])
+
+      (first (sieve even? (range 9)))
+      ;; => (0 2 4 6 8)
+
+      ;;; vs.
+
+      (defn sieve
+        [p xs]
+        {:true (filter p xs) :false (remove p xs)})
+
+      (:true (sieve even? (range 9)))
+      ;; => (0 2 4 6 8)
+    #+end_src
+
+* Afterword
+
+  This post and my advice are clearly opinionated. If you disagree with
+  anything I've said, found a mistake, or think I missed important bits,
+  feel free to shout at me on any of the social media platforms I'm on.
