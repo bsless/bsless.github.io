@@ -1,0 +1,962 @@
+---
+layout: post
+title: "Idiomatic Clojure: Code Smells"
+permalink: /:title/
+tags: [clojure, "idiomatic clojure" ,"code smells"]
+categories: [clojure, "idiomatic clojure", "code smells"]
+---
+
+<p>
+We all make mistakes. We have all written bad pieces of code at some
+point of our lives. They might have been non-idiomatic, unreadable, or
+had bad performance.
+</p>
+
+<p>
+This post catalogs all the little things which sit down at the bottom of
+your code, accumulate like dust, and when taken in as a whole, clog down
+the code base. It's important to remember code is read more than it is
+edited, and is not only a way for us to communicate with the computer,
+but with other programmers (including ourselves in the future).
+</p>
+
+<p>
+Hopefully the advice in this post will help you recognize all those
+little code smells and write more readable, maintainable code.
+</p>
+
+<p>
+Happy hacking.
+</p>
+
+<div id="outline-container-orgf4df3d6" class="outline-2">
+<h2 id="orgf4df3d6">Mapping</h2>
+<div class="outline-text-2" id="text-orgf4df3d6">
+</div>
+<div id="outline-container-org5a51028" class="outline-3">
+<h3 id="org5a51028"><code>mapcat</code> To The Rescue</h3>
+<div class="outline-text-3" id="text-org5a51028">
+<p>
+Sometimes you need to concat the results of mapping. Using <code>mapcat</code>
+is an idiomatic option for this case:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't                       Do</span>
+<span style="color: #3a81c3;">(</span>apply concat <span style="color: #6c3163;">(</span>map f xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>mapcat xs<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org7ce1284" class="outline-3">
+<h3 id="org7ce1284">What Is It For?</h3>
+<div class="outline-text-3" id="text-org7ce1284">
+<p>
+Avoid trivial <code>for</code> (list comprehensions)
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't                Do</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">for</span> <span style="color: #6c3163;">[</span>x xs<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>f x<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>map f xs<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+And yes, I've seen a combination of both:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Please Don't</span>
+<span style="color: #3a81c3;">(</span>apply concat <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">for</span> <span style="color: #2d9574;">[</span>x xs<span style="color: #2d9574;">]</span> <span style="color: #2d9574;">(</span>f x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org4b502a9" class="outline-3">
+<h3 id="org4b502a9">Trivial Lambda</h3>
+<div class="outline-text-3" id="text-org4b502a9">
+<p>
+There's no reason to wrap a function in an anonymous function:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't             Do</span>
+<span style="color: #3a81c3;">(</span>map #<span style="color: #6c3163;">(</span>f <span style="color: #715ab1;">%</span><span style="color: #6c3163;">)</span> xs<span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>map f xs<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org26c795e" class="outline-3">
+<h3 id="org26c795e">Realize When Collections Want To Be Associative</h3>
+<div class="outline-text-3" id="text-org26c795e">
+<p>
+If you find yourself scanning collections of maps looking for a map
+where a certain key has a certain value, your collection might be
+telling you it wants to be associative, not sequential:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">people</span>
+  <span style="color: #6c3163;">[</span><span style="color: #2d9574;">{</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">person</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">name</span> <span style="color: #2d9574;">"Fred"</span><span style="color: #2d9574;">}</span>
+   <span style="color: #2d9574;">{</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">person</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">name</span> <span style="color: #2d9574;">"Ethel"</span><span style="color: #2d9574;">}</span>
+   <span style="color: #2d9574;">{</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">person</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">name</span> <span style="color: #2d9574;">"Lucy"</span><span style="color: #2d9574;">}</span><span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">person-in-people?</span>
+  <span style="color: #6c3163;">[</span>person people<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span>some #<span style="color: #2d9574;">(</span>= person <span style="color: #67b11d;">(</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">person</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">name</span> <span style="color: #715ab1;">%</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span> people<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>person-in-people? <span style="color: #2d9574;">"Fred"</span> people<span style="color: #3a81c3;">)</span><span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; true</span>
+<span style="color: #3a81c3;">(</span>person-in-people? <span style="color: #2d9574;">"Bob"</span> people<span style="color: #3a81c3;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; nil</span>
+
+</pre>
+</div>
+
+<p>
+Instead, index the collection according to the parameter which
+interests you:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">collected-people</span>
+  <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">clojure.set</span>/index people <span style="color: #2d9574;">[</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">person</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">name</span><span style="color: #2d9574;">]</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>contains? collected-people <span style="color: #6c3163;">{</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">person</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">name</span> <span style="color: #2d9574;">"Fred"</span><span style="color: #6c3163;">}</span><span style="color: #3a81c3;">)</span><span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; true</span>
+<span style="color: #3a81c3;">(</span>contains? collected-people <span style="color: #6c3163;">{</span><span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">person</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">name</span> <span style="color: #2d9574;">"Bob"</span><span style="color: #6c3163;">}</span><span style="color: #3a81c3;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; false</span>
+</pre>
+</div>
+
+<p>
+This code is readable: "Does <code>collected-people</code> contain a person
+who's name is Bob?".
+</p>
+
+<p>
+You can also index it yourself:
+</p>
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">index</span>
+  <span style="color: #6c3163;">[</span>xs k<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span>reduce
+   <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #67b11d;">[</span>m x<span style="color: #67b11d;">]</span>
+     <span style="color: #67b11d;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #b1951d;">[</span>ik <span style="color: #3a81c3;">(</span>get x k<span style="color: #3a81c3;">)</span><span style="color: #b1951d;">]</span>
+       <span style="color: #b1951d;">(</span>assoc m ik <span style="color: #3a81c3;">(</span>conj <span style="color: #6c3163;">(</span>get m ik #<span style="color: #2d9574;">{}</span><span style="color: #6c3163;">)</span> x<span style="color: #3a81c3;">)</span><span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span> <span style="color: #2d9574;">{}</span> xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">collected-people</span>
+  <span style="color: #6c3163;">(</span>index people <span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">person</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">name</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>contains? collected-people <span style="color: #2d9574;">"Fred"</span><span style="color: #3a81c3;">)</span><span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; true</span>
+<span style="color: #3a81c3;">(</span>contains? collected-people <span style="color: #2d9574;">"Bob"</span><span style="color: #3a81c3;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; false</span>
+</pre>
+</div>
+
+<p>
+If you repeatedly filter according to certain attributes, you might
+want to index according to them, too, with <code>group-by</code> or
+<code>clojure.set/index</code>.
+</p>
+
+<p>
+An important distinction between group-by and index, is that group-by
+indexes according to a function, so you can presumably bin values as
+well, for example, by age or height, while index works specifically
+with keys.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgbb77d36" class="outline-2">
+<h2 id="orgbb77d36">Filtering</h2>
+<div class="outline-text-2" id="text-orgbb77d36">
+<p>
+This problem is similar to a trivial lambda, just wrapped in negation.
+Remember <code>remove</code> is the negated case of <code>filter</code>:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't                      Do</span>
+<span style="color: #3a81c3;">(</span>filter #<span style="color: #6c3163;">(</span>not <span style="color: #2d9574;">(</span>p <span style="color: #715ab1;">%</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span> xs<span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>remove p xs<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>remove #<span style="color: #6c3163;">(</span>not <span style="color: #2d9574;">(</span>p <span style="color: #715ab1;">%</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span> xs<span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>filter p xs<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgad7ecbe" class="outline-2">
+<h2 id="orgad7ecbe">Sequence navigation</h2>
+<div class="outline-text-2" id="text-orgad7ecbe">
+<p>
+Sometimes you need to dig into elements in a sequence. Plenty of users
+aren't familiar with the concise versions:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't               Do</span>
+<span style="color: #3a81c3;">(</span>first <span style="color: #6c3163;">(</span>first xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span> =&gt;  <span style="color: #3a81c3;">(</span>ffirst xs<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>first <span style="color: #6c3163;">(</span>next xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>fnext xs<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>next <span style="color: #6c3163;">(</span>first xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>nfirst xs<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>next <span style="color: #6c3163;">(</span>next xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>   =&gt;  <span style="color: #3a81c3;">(</span>nnirst xs<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Sort of like <code>cadr</code> but makes more sense.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org8265f44" class="outline-2">
+<h2 id="org8265f44">Emptiness</h2>
+<div class="outline-text-2" id="text-org8265f44">
+<p>
+The concept of emptiness is tricky in Clojure. Did you know <code>nil</code> is
+also empty? What defines an empty sequence? How can we know if a lazy
+unrealized sequence is empty? Do we <code>count</code> it? What if it's infinite?
+</p>
+
+<p>
+To begin with, let's look at what <code>empty?</code> actually does:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">empty?</span>
+  <span style="color: #da8b55;">"Returns true if coll has no items - same as (not (seq coll)).</span>
+<span style="color: #da8b55;">  Please use the idiom (seq x) rather than (not (empty? x))"</span>
+  <span style="color: #6c3163;">[</span>coll<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>not <span style="color: #2d9574;">(</span>seq coll<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+If you have eyes to see, you notice the docstring and know exactly
+where this is going:
+</p>
+
+<p>
+Don't use <code>(not (empty? x))</code>!
+</p>
+
+<p>
+You've probably seen or written at least one of the following
+examples:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't                        Do</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">when</span> <span style="color: #6c3163;">(</span>not <span style="color: #2d9574;">(</span>empty? x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span> ...<span style="color: #3a81c3;">)</span>  =&gt; <span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">when</span> <span style="color: #6c3163;">(</span>seq x<span style="color: #6c3163;">)</span> ...<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">when-not</span> <span style="color: #6c3163;">(</span>empty? x<span style="color: #6c3163;">)</span> ...<span style="color: #3a81c3;">)</span>    =&gt; <span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">when</span> <span style="color: #6c3163;">(</span>seq x<span style="color: #6c3163;">)</span> ...<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">when</span> <span style="color: #6c3163;">(</span>= <span style="color: #4e3163;">0</span> <span style="color: #2d9574;">(</span>count x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span> ...<span style="color: #3a81c3;">)</span>   =&gt; <span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">when</span> <span style="color: #6c3163;">(</span>empty? x<span style="color: #6c3163;">)</span> ...<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">when</span> <span style="color: #6c3163;">(</span>&lt; <span style="color: #4e3163;">0</span> <span style="color: #2d9574;">(</span>count x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span> ...<span style="color: #3a81c3;">)</span>   =&gt; <span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">when</span> <span style="color: #6c3163;">(</span>seq x<span style="color: #6c3163;">)</span> ...<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org73ac902" class="outline-2">
+<h2 id="org73ac902">Into <code>into</code></h2>
+<div class="outline-text-2" id="text-org73ac902">
+<p>
+<code>into</code> is a pretty useful function, but one often abused.
+</p>
+
+<p>
+The (mis)usage of <code>into</code> can usually be broken to three distinct
+cases:
+</p>
+</div>
+
+<div id="outline-container-org6b98cbe" class="outline-3">
+<h3 id="org6b98cbe">Type Transformations</h3>
+<div class="outline-text-3" id="text-org6b98cbe">
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't           Do</span>
+<span style="color: #3a81c3;">(</span>into <span style="color: #6c3163;">[]</span> xs<span style="color: #3a81c3;">)</span>   =&gt;  <span style="color: #3a81c3;">(</span>vec xs<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>into #<span style="color: #6c3163;">{}</span> xs<span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>set xs<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org9136ae9" class="outline-3">
+<h3 id="org9136ae9">Map Mapping</h3>
+<div class="outline-text-3" id="text-org9136ae9">
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't</span>
+<span style="color: #3a81c3;">(</span>into <span style="color: #6c3163;">{}</span> <span style="color: #6c3163;">(</span>map <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #67b11d;">[</span><span style="color: #b1951d;">[</span>k v<span style="color: #b1951d;">]</span><span style="color: #67b11d;">]</span> <span style="color: #67b11d;">[</span>k <span style="color: #b1951d;">(</span>f v<span style="color: #b1951d;">)</span><span style="color: #67b11d;">]</span><span style="color: #2d9574;">)</span> m<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>into <span style="color: #6c3163;">{}</span> <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">for</span> <span style="color: #2d9574;">[</span><span style="color: #67b11d;">[</span>k v<span style="color: #67b11d;">]</span> m<span style="color: #2d9574;">]</span> <span style="color: #2d9574;">[</span>k <span style="color: #67b11d;">(</span>f v<span style="color: #67b11d;">)</span><span style="color: #2d9574;">]</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Do</span>
+<span style="color: #3a81c3;">(</span>reduce-kv <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #2d9574;">[</span>m k v<span style="color: #2d9574;">]</span> <span style="color: #2d9574;">(</span>assoc m k <span style="color: #67b11d;">(</span>f v<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span> <span style="color: #6c3163;">{}</span> m<span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Or faster* but less pretty</span>
+<span style="color: #3a81c3;">(</span>persistent!
+ <span style="color: #6c3163;">(</span>reduce-kv <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #67b11d;">[</span>m k v<span style="color: #67b11d;">]</span> <span style="color: #67b11d;">(</span>assoc! m k <span style="color: #b1951d;">(</span>f v<span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span> <span style="color: #2d9574;">(</span>transient <span style="color: #67b11d;">{}</span><span style="color: #2d9574;">)</span> m<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Don't write it out manually every time. Turn it into a function and
+throw it into one of half-dozen util namespaces.
+</p>
+
+<p>
+NOTE: the benefits from the transient version increase with the size
+of the input. For very small maps, the non-transient version is
+faster.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org5107d38" class="outline-3">
+<h3 id="org5107d38">Not Using The Transducer API</h3>
+<div class="outline-text-3" id="text-org5107d38">
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't                       Do</span>
+<span style="color: #3a81c3;">(</span>into coll <span style="color: #6c3163;">(</span>map f xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>     =&gt;  <span style="color: #3a81c3;">(</span>into coll <span style="color: #6c3163;">(</span>map f<span style="color: #6c3163;">)</span> xs<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>into coll <span style="color: #6c3163;">(</span>filter p xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>into coll <span style="color: #6c3163;">(</span>filter p<span style="color: #6c3163;">)</span> xs<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgdf1baa7" class="outline-2">
+<h2 id="orgdf1baa7">Working With Maps</h2>
+<div class="outline-text-2" id="text-orgdf1baa7">
+</div>
+<div id="outline-container-org1c69ddd" class="outline-3">
+<h3 id="org1c69ddd">The Value Of Nothing</h3>
+<div class="outline-text-3" id="text-org1c69ddd">
+<p>
+Clojure maps are <a href="https://www.youtube.com/watch?v=YR5WdGrpoug">collections, not slots</a>. Combined with <code>nil</code>'s
+meaning being "nothing", <code>nil</code> values inside maps are confusing:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>get <span style="color: #6c3163;">{</span><span style="color: #4e3163;">:a</span> <span style="color: #4e3163;">nil</span><span style="color: #6c3163;">}</span> <span style="color: #4e3163;">:a</span><span style="color: #3a81c3;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; nil</span>
+<span style="color: #3a81c3;">(</span>get <span style="color: #6c3163;">{</span><span style="color: #4e3163;">:b</span> <span style="color: #4e3163;">111</span><span style="color: #6c3163;">}</span> <span style="color: #4e3163;">:a</span><span style="color: #3a81c3;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; nil</span>
+</pre>
+</div>
+
+<p>
+Try to avoid inserting <code>nil</code> values into a map.
+</p>
+
+<p>
+If it is not a map you control, you can always prune it.
+</p>
+
+<p>
+Both implementations are valid:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">assoc-some</span> <span style="color: #6c3163;">[</span>m k v<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #2d9574;">(</span>nil? v<span style="color: #2d9574;">)</span> m <span style="color: #2d9574;">(</span>assoc m k v<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">prune-nils</span> <span style="color: #6c3163;">[</span>m<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>reduce-kv assoc-some <span style="color: #2d9574;">{}</span> m<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>prune-nils <span style="color: #6c3163;">{</span><span style="color: #4e3163;">:a</span> <span style="color: #4e3163;">1</span> <span style="color: #4e3163;">:b</span> <span style="color: #4e3163;">nil</span> <span style="color: #4e3163;">:c</span> <span style="color: #4e3163;">2</span> <span style="color: #4e3163;">:d</span> <span style="color: #4e3163;">nil</span><span style="color: #6c3163;">}</span><span style="color: #3a81c3;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; {:a 1, :c 2}</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">remove-nil</span> <span style="color: #6c3163;">[</span>m k v<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #2d9574;">(</span>nil? v<span style="color: #2d9574;">)</span> <span style="color: #2d9574;">(</span>dissoc m k<span style="color: #2d9574;">)</span> m<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">prune-nils</span> <span style="color: #6c3163;">[</span>m<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>reduce-kv remove-nil m m<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>prune-nils <span style="color: #6c3163;">{</span><span style="color: #4e3163;">:a</span> <span style="color: #4e3163;">1</span> <span style="color: #4e3163;">:b</span> <span style="color: #4e3163;">nil</span> <span style="color: #4e3163;">:c</span> <span style="color: #4e3163;">2</span> <span style="color: #4e3163;">:d</span> <span style="color: #4e3163;">nil</span><span style="color: #6c3163;">}</span><span style="color: #3a81c3;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; {:a 1, :c 2}</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org0fccbfe" class="outline-3">
+<h3 id="org0fccbfe">Avoid Manual Merge</h3>
+<div class="outline-text-3" id="text-org0fccbfe">
+<p>
+The below piece of code conditionally merges <code>m2</code> into <code>m1</code> when the
+values in <code>m2</code> are not <code>nil</code>:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #6c3163;">[</span>m1 <span style="color: #2d9574;">{}</span>
+      m1 <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #67b11d;">(</span>nil? <span style="color: #b1951d;">(</span><span style="color: #4e3163;">:k</span> m2<span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span> m1 <span style="color: #67b11d;">(</span>assoc m1 <span style="color: #4e3163;">:k</span> <span style="color: #b1951d;">(</span><span style="color: #4e3163;">:k</span> m2<span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Imagine it being done for every key in <code>m2</code>. There can be 20 Keys.
+Who can even make sense of the important parts of the code
+afterwards?
+</p>
+
+<p>
+Instead, combine nil pruning with merge, as two steps of
+understandable data transformations:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>merge m1 <span style="color: #6c3163;">(</span>prune-nils m2<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgca8cbfb" class="outline-3">
+<h3 id="orgca8cbfb">Avoid Manual Key Selection</h3>
+<div class="outline-text-3" id="text-orgca8cbfb">
+<p>
+I see this usually going hand-in-hand with manual merges:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">{</span><span style="color: #4e3163;">:a</span> <span style="color: #6c3163;">(</span><span style="color: #4e3163;">:a</span> m1<span style="color: #6c3163;">)</span>
+ <span style="color: #4e3163;">:b</span> <span style="color: #6c3163;">(</span><span style="color: #4e3163;">:b</span> m2<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">}</span>
+</pre>
+</div>
+
+<p>
+Again, this can usually involve pretty big maps. Instead, try to:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>merge <span style="color: #6c3163;">(</span>select-keys m1 <span style="color: #2d9574;">[</span><span style="color: #4e3163;">:a</span><span style="color: #2d9574;">]</span><span style="color: #6c3163;">)</span>
+       <span style="color: #6c3163;">(</span>select-keys m2 <span style="color: #2d9574;">[</span><span style="color: #4e3163;">:b</span><span style="color: #2d9574;">]</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Just one word of warning, using <code>merge</code> and <code>select-keys</code> on a hot
+code path might not be desirable due to performance concerns.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org437be60" class="outline-3">
+<h3 id="org437be60">Conditional Build-Up</h3>
+<div class="outline-text-3" id="text-org437be60">
+<p>
+I often see this pattern repeating itself:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">foo</span>
+  <span style="color: #6c3163;">[</span>in<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #2d9574;">[</span>m <span style="color: #67b11d;">{</span><span style="color: #4e3163;">:k0</span> <span style="color: #b1951d;">(</span>f0 in<span style="color: #b1951d;">)</span><span style="color: #67b11d;">}</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">mandatory</span>
+        m <span style="color: #67b11d;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #b1951d;">(</span>p1 in<span style="color: #b1951d;">)</span> <span style="color: #b1951d;">(</span>assoc m <span style="color: #4e3163;">:k1</span> <span style="color: #3a81c3;">(</span>f1 in<span style="color: #3a81c3;">)</span><span style="color: #b1951d;">)</span> m<span style="color: #67b11d;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">optional</span>
+        m <span style="color: #67b11d;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #b1951d;">(</span>p2 in<span style="color: #b1951d;">)</span> <span style="color: #b1951d;">(</span>assoc m <span style="color: #4e3163;">:k2</span> <span style="color: #3a81c3;">(</span>f2 in<span style="color: #3a81c3;">)</span><span style="color: #b1951d;">)</span> m<span style="color: #67b11d;">)</span><span style="color: #2d9574;">]</span>
+    m<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Instead, use <code>cond-&gt;</code>:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">foo</span>
+  <span style="color: #6c3163;">[</span>in<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">cond-&gt;</span> <span style="color: #2d9574;">{</span><span style="color: #4e3163;">:k0</span> <span style="color: #67b11d;">(</span>f0 in<span style="color: #67b11d;">)</span><span style="color: #2d9574;">}</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">mandatory</span>
+    <span style="color: #2d9574;">(</span>p1 in<span style="color: #2d9574;">)</span> <span style="color: #2d9574;">(</span>assoc <span style="color: #4e3163;">:k1</span> <span style="color: #67b11d;">(</span>f1 in<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">optional</span>
+    <span style="color: #2d9574;">(</span>p2 in<span style="color: #2d9574;">)</span> <span style="color: #2d9574;">(</span>assoc <span style="color: #4e3163;">:k2</span> <span style="color: #67b11d;">(</span>f2 in<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+This way, flow control turns into syntax and there's no state to keep
+track of.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orge91b150" class="outline-2">
+<h2 id="orge91b150">Numbers!</h2>
+<div class="outline-text-2" id="text-orge91b150">
+<p>
+Clojure has functions covering some common use cases when working with
+numbers which both perform and convey intent better.
+</p>
+</div>
+
+<div id="outline-container-orgc994d2b" class="outline-3">
+<h3 id="orgc994d2b">Absolute Zero</h3>
+<div class="outline-text-3" id="text-orgc994d2b">
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't     Do</span>
+<span style="color: #3a81c3;">(</span>= <span style="color: #4e3163;">0</span> x<span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>zero? x<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>&gt; x <span style="color: #4e3163;">0</span><span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>pos? x<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>&lt; x <span style="color: #4e3163;">0</span><span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>neg? x<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org955073f" class="outline-3">
+<h3 id="org955073f">One Away</h3>
+<div class="outline-text-3" id="text-org955073f">
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't     Do</span>
+<span style="color: #3a81c3;">(</span>+ <span style="color: #4e3163;">1</span> x<span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>inc x<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>- <span style="color: #4e3163;">1</span> x<span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>dec x<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgc6059ba" class="outline-2">
+<h2 id="orgc6059ba">Truth Be Told</h2>
+<div class="outline-text-2" id="text-orgc6059ba">
+<p>
+Same case with numbers, no need to compare to booleans and nil.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't          Do</span>
+<span style="color: #3a81c3;">(</span>= <span style="color: #4e3163;">true</span> x<span style="color: #3a81c3;">)</span>   =&gt;   <span style="color: #3a81c3;">(</span>true? x<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>= <span style="color: #4e3163;">false</span> x<span style="color: #3a81c3;">)</span>  =&gt;   <span style="color: #3a81c3;">(</span>false? x<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>= <span style="color: #4e3163;">nil</span> x<span style="color: #3a81c3;">)</span>    =&gt;   <span style="color: #3a81c3;">(</span>nil? x<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org18cbca4" class="outline-2">
+<h2 id="org18cbca4"><code>doall</code></h2>
+<div class="outline-text-2" id="text-org18cbca4">
+<p>
+<code>doall</code> is a macro which forcefully realizes lazy sequences. It should
+not be used in production.
+</p>
+
+<p>
+See my previous posts regarding alternative to <code>doall</code> in a <a href="https://bsless.github.io/side-effects/">single
+threaded</a> and a <a href="https://bsless.github.io/mapping-parallel-side-effects/">multi-threaded</a> context.
+</p>
+
+<p>
+on a side note, I hope you never see something like: <code>(doall (doseq [x xs] ..))</code>.
+It's wrong on two levels
+</p>
+<ul class="org-ul">
+<li><code>doseq</code> is already strict</li>
+<li><code>doseq</code> returns nothing, so there's nothing to <code>doall</code></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-org9d78621" class="outline-2">
+<h2 id="org9d78621">Style</h2>
+<div class="outline-text-2" id="text-org9d78621">
+</div>
+<div id="outline-container-org7ed23eb" class="outline-3">
+<h3 id="org7ed23eb">Implicit <code>do</code> blocks</h3>
+<div class="outline-text-3" id="text-org7ed23eb">
+<p>
+Some expressions have implicit <code>do</code> blocks in them, making it
+unnecessary to use a <code>do</code> block.
+</p>
+</div>
+
+<div id="outline-container-orgeac259a" class="outline-4">
+<h4 id="orgeac259a">when</h4>
+<div class="outline-text-4" id="text-orgeac259a">
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">when</span> test
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">do</span> expr1
+      expr2<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Do</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">when</span> test
+  expr1
+  expr2<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orga61765e" class="outline-4">
+<h4 id="orga61765e">let</h4>
+<div class="outline-text-4" id="text-orga61765e">
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> bindings
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">do</span> expr1
+      expr2<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Do</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> bindings
+  expr1
+  expr2<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org2d07f02" class="outline-4">
+<h4 id="org2d07f02">Function body</h4>
+<div class="outline-text-4" id="text-org2d07f02">
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163;">[]</span>
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">do</span> expr1
+      expr2<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Do</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163;">[]</span>
+  expr1
+  expr2<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org25d17fd" class="outline-4">
+<h4 id="org25d17fd">More</h4>
+<div class="outline-text-4" id="text-org25d17fd">
+<p>
+Same goes for <code>try</code>, <code>catch</code>, and any other macro with a type
+signature <code>&amp; body</code>.
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org42519c3" class="outline-3">
+<h3 id="org42519c3">Threading</h3>
+<div class="outline-text-3" id="text-org42519c3">
+<p>
+Avoid trivial threading:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">-&gt;</span> x f<span style="color: #3a81c3;">)</span>     =&gt; <span style="color: #3a81c3;">(</span>f x<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">-&gt;</span> x <span style="color: #6c3163;">(</span>f a<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span> =&gt; <span style="color: #3a81c3;">(</span>f x a<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+And remember to <a href="https://stuartsierra.com/2018/07/06/threading-with-style">thread with style</a>:
+</p>
+
+<ul class="org-ul">
+<li><code>-&gt;</code> is for collections</li>
+<li><code>-&gt;&gt;</code> is for sequences</li>
+</ul>
+</div>
+
+<div id="outline-container-org6811e64" class="outline-4">
+<h4 id="org6811e64">Thread Instead Of A Deep Call Stack</h4>
+<div class="outline-text-4" id="text-org6811e64">
+<p>
+Deep call stacks tie implementations together and make testing more
+difficult as the input space becomes larger instead of smaller by
+successive function calls.
+</p>
+
+<p>
+They take atomic and understandable data transformation functions
+and make them opaque.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">h</span> <span style="color: #6c3163;">[</span>x<span style="color: #6c3163;">]</span> ...<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">g</span> <span style="color: #6c3163;">[</span>x<span style="color: #6c3163;">]</span> ... <span style="color: #6c3163;">(</span>h x<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">f</span> <span style="color: #6c3163;">[</span>x<span style="color: #6c3163;">]</span> ... <span style="color: #6c3163;">(</span>g x<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Do</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">-&gt;</span> x f g h<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org9e8d94e" class="outline-4">
+<h4 id="org9e8d94e"><code>some-&gt;</code></h4>
+<div class="outline-text-4" id="text-org9e8d94e">
+<p>
+Nested when/let can be converted to <code>some-&gt;</code>
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">when-let</span> <span style="color: #6c3163;">[</span>x1 <span style="color: #2d9574;">(</span>f0 x0<span style="color: #2d9574;">)</span><span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">when-let</span> <span style="color: #2d9574;">[</span>x2 <span style="color: #67b11d;">(</span>f1 x1<span style="color: #67b11d;">)</span><span style="color: #2d9574;">]</span>
+    <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">when-let</span> <span style="color: #67b11d;">[</span>x3 <span style="color: #b1951d;">(</span>f2 x2<span style="color: #b1951d;">)</span><span style="color: #67b11d;">]</span>
+      <span style="color: #67b11d;">(</span>f3 x3<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Do</span>
+<span style="color: #3a81c3;">(</span>some-&gt; x0 f0 f1 f2 f3<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Same goes for this structure:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #6c3163;">[</span>x <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #67b11d;">(</span>nil? x<span style="color: #67b11d;">)</span> <span style="color: #4e3163;">nil</span> <span style="color: #67b11d;">(</span>x f0<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span>
+      x <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #67b11d;">(</span>nil? x<span style="color: #67b11d;">)</span> <span style="color: #4e3163;">nil</span> <span style="color: #67b11d;">(</span>x f1<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span>
+      x <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #67b11d;">(</span>nil? x<span style="color: #67b11d;">)</span> <span style="color: #4e3163;">nil</span> <span style="color: #67b11d;">(</span>x f2<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #2d9574;">(</span>nil? x<span style="color: #2d9574;">)</span> <span style="color: #4e3163;">nil</span> <span style="color: #2d9574;">(</span>f3 x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Do</span>
+<span style="color: #3a81c3;">(</span>some-&gt; x0 f0 f1 f2 f3<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org3d24401" class="outline-4">
+<h4 id="org3d24401"><code>cond-&gt;</code></h4>
+<div class="outline-text-4" id="text-org3d24401">
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #6c3163;">[</span>x <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #67b11d;">(</span>p0 x<span style="color: #67b11d;">)</span> <span style="color: #67b11d;">(</span>f0 x<span style="color: #67b11d;">)</span> x<span style="color: #2d9574;">)</span>
+      x <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #67b11d;">(</span>p1 x<span style="color: #67b11d;">)</span> <span style="color: #67b11d;">(</span>f1 x<span style="color: #67b11d;">)</span> x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #2d9574;">(</span>p2 x<span style="color: #2d9574;">)</span> <span style="color: #2d9574;">(</span>f2 x<span style="color: #2d9574;">)</span> x<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">cond-&gt;</span> x
+  <span style="color: #6c3163;">(</span>p0 x<span style="color: #6c3163;">)</span> f0
+  <span style="color: #6c3163;">(</span>p1 x<span style="color: #6c3163;">)</span> f1
+  <span style="color: #6c3163;">(</span>p2 x<span style="color: #6c3163;">)</span> f2<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+The only subtle difference to keep in mind that the predicates can't
+depend on the result of the previous computation stage.
+</p>
+
+<p>
+We can achieve that behavior with a slight modification to <code>cond-&gt;</code>:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defmacro</span> <span style="color: #6c3163; font-weight: bold;">cond*-&gt;</span>
+  <span style="color: #6c3163;">[</span>expr &amp; clauses<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span>assert <span style="color: #2d9574;">(</span>even? <span style="color: #67b11d;">(</span>count clauses<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span>
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #2d9574;">[</span>g <span style="color: #67b11d;">(</span>gensym<span style="color: #67b11d;">)</span>
+        steps <span style="color: #67b11d;">(</span>map <span style="color: #b1951d;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #3a81c3;">[</span><span style="color: #6c3163;">[</span>test step<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">]</span> `<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">-&gt;</span> ~g ~test<span style="color: #6c3163;">)</span> <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">-&gt;</span> ~g ~step<span style="color: #6c3163;">)</span> ~g<span style="color: #3a81c3;">)</span><span style="color: #b1951d;">)</span>
+                   <span style="color: #b1951d;">(</span>partition <span style="color: #4e3163;">2</span> clauses<span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">]</span>
+    `<span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #67b11d;">[</span>~g ~expr
+           ~@<span style="color: #b1951d;">(</span>interleave <span style="color: #3a81c3;">(</span>repeat g<span style="color: #3a81c3;">)</span> <span style="color: #3a81c3;">(</span>butlast steps<span style="color: #3a81c3;">)</span><span style="color: #b1951d;">)</span><span style="color: #67b11d;">]</span>
+       ~<span style="color: #67b11d;">(</span><span style="color: #3a81c3; font-weight: bold;">if</span> <span style="color: #b1951d;">(</span>empty? steps<span style="color: #b1951d;">)</span>
+          g
+          <span style="color: #b1951d;">(</span>last steps<span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>cond*-&gt; x
+         p0 f0
+         p1 f1
+         p2 f2<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org20f9e67" class="outline-4">
+<h4 id="org20f9e67"><code>let</code> Shadowing</h4>
+<div class="outline-text-4" id="text-org20f9e67">
+<p>
+There's usually very little reason to shadow a binding inside a <code>let</code> body:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #6c3163;">[</span>x <span style="color: #2d9574;">(</span>f0 x<span style="color: #2d9574;">)</span>
+      x <span style="color: #2d9574;">(</span>f1 x<span style="color: #2d9574;">)</span>
+      x <span style="color: #2d9574;">(</span>f2 x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span>f3 x<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Should be:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">-&gt;</span> x f0 f1 f2 f3<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org8428b4c" class="outline-3">
+<h3 id="org8428b4c">Nested Forms</h3>
+<div class="outline-text-3" id="text-org8428b4c">
+<p>
+Plenty of macros with binding forms don't need to be nested:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #6c3163;">[</span>x <span style="color: #4e3163;">1</span><span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #2d9574;">[</span>y <span style="color: #4e3163;">2</span><span style="color: #2d9574;">]</span>
+    <span style="color: #2d9574;">[</span>x y<span style="color: #2d9574;">]</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Do</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #6c3163;">[</span>x <span style="color: #4e3163;">1</span>
+      y <span style="color: #4e3163;">2</span><span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">[</span>x y<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+A special case is that of nested iteration:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">doseq</span> <span style="color: #6c3163;">[</span>x xs<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">doseq</span> <span style="color: #2d9574;">[</span>y ys<span style="color: #2d9574;">]</span>
+    <span style="color: #2d9574;">(</span>println x y<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Do</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">doseq</span> <span style="color: #6c3163;">[</span>x xs
+        y ys<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">(</span>println x y<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgf89ba71" class="outline-3">
+<h3 id="orgf89ba71">Trivial Mapping Wrappers</h3>
+<div class="outline-text-3" id="text-orgf89ba71">
+<p>
+We can sometimes find the following form in code, of do-one-thing
+then do-one-thing-n-times:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">build-person</span> <span style="color: #6c3163;">[</span>x<span style="color: #6c3163;">]</span> ...<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">build-persons</span> <span style="color: #6c3163;">[</span>xs<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>map build-person xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+It may not be immediately apparent why it's a code smell.
+</p>
+
+<ul class="org-ul">
+<li>It ties implementation to concretion. Now the entire code will be
+in the context of a sequence of things and not thinking about one
+thing at a time. We have to mentally jump back and forth between
+the collection of things and one thing.</li>
+<li>Fragile: we might end up adding more logic to <code>build-persons</code>,
+which makes us nominative liars, since the name doesn't match what
+it does anymore. This change now won't be reflected across the
+system by anyone using only the singular function.</li>
+<li>Composes badly: had we wanted to compose several singular
+functions, we could have just used a threading macro or <code>comp</code> and
+be done with it. To compose for a sequential use case we could have
+used transducers. Now we are tied to a sequential concretion.</li>
+<li>Less reusable: due to all of the above, once a singular function
+has been dragged to the plural context, we decrease the chances of
+being able to reuse the singular from one side, and tie the plural
+down with further details which prevent usage in other contexts, or
+would necessitate ugly hacks, like mapping it on a sequence with
+one element.</li>
+</ul>
+</div>
+</div>
+
+
+<div id="outline-container-org23c637e" class="outline-3">
+<h3 id="org23c637e">Positional Arguments</h3>
+<div class="outline-text-3" id="text-org23c637e">
+</div>
+<div id="outline-container-org803559c" class="outline-4">
+<h4 id="org803559c">Avoid An Explosion In Input Arguments</h4>
+<div class="outline-text-4" id="text-org803559c">
+<p>
+If your functions take a very large number of arguments, suspect
+they should be broken apart, because it's unlikely all arguments are
+used simultaneously.
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">f</span>
+  <span style="color: #6c3163;">[</span>fizz buzz foo bar quux ohgod enough<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgfd914ae" class="outline-4">
+<h4 id="orgfd914ae">Prefer A map To Key-Value Rest Arguments</h4>
+<div class="outline-text-4" id="text-orgfd914ae">
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">f</span>
+  <span style="color: #6c3163;">(</span><span style="color: #2d9574;">[</span>x y<span style="color: #2d9574;">]</span>
+   <span style="color: #2d9574;">(</span>f x y <span style="color: #4e3163;">:a</span> <span style="color: #4e3163;">1</span> <span style="color: #4e3163;">:b</span> <span style="color: #4e3163;">2</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span>
+  <span style="color: #6c3163;">(</span><span style="color: #2d9574;">[</span>x y &amp; <span style="color: #67b11d;">{</span>a <span style="color: #4e3163;">:a</span> b <span style="color: #4e3163;">:b</span><span style="color: #67b11d;">}</span><span style="color: #2d9574;">]</span>
+   ,,,<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>f x y <span style="color: #4e3163;">:a</span> <span style="color: #4e3163;">3</span> <span style="color: #4e3163;">:b</span> <span style="color: #4e3163;">4</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">vs.</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">f</span>
+  <span style="color: #6c3163;">(</span><span style="color: #2d9574;">[</span>x y<span style="color: #2d9574;">]</span>
+   <span style="color: #2d9574;">(</span>f x y <span style="color: #67b11d;">{</span><span style="color: #4e3163;">:a</span> <span style="color: #4e3163;">1</span> <span style="color: #4e3163;">:b</span> <span style="color: #4e3163;">2</span><span style="color: #67b11d;">}</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span>
+  <span style="color: #6c3163;">(</span><span style="color: #2d9574;">[</span>x y <span style="color: #67b11d;">{</span>a <span style="color: #4e3163;">:a</span> b <span style="color: #4e3163;">:b</span><span style="color: #67b11d;">}</span><span style="color: #2d9574;">]</span>
+  ,,,<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>f x y <span style="color: #6c3163;">{</span><span style="color: #4e3163;">:a</span> <span style="color: #4e3163;">3</span> <span style="color: #4e3163;">:b</span> <span style="color: #4e3163;">4</span><span style="color: #6c3163;">}</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+The main reason for this is when you wish to pass the function
+around as a higher order function you need to be mindful of the type
+of the tail arguments, make sure they always get unpacked, and
+remember to usually <code>apply</code> everywhere. This is easily avoided by
+using the second style.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgc0dcc71" class="outline-4">
+<h4 id="orgc0dcc71">Prefer Returning Maps Over Returning Positional Values</h4>
+<div class="outline-text-4" id="text-orgc0dcc71">
+<p>
+Using positional return values encodes meaning to indices, giving
+semantic or business meaning to indices/ordering. It's better to
+encode that meaning as explicit keywords:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">sieve</span>
+  <span style="color: #6c3163;">[</span>p xs<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">[</span><span style="color: #2d9574;">(</span>filter p xs<span style="color: #2d9574;">)</span> <span style="color: #2d9574;">(</span>remove p xs<span style="color: #2d9574;">)</span><span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>first <span style="color: #6c3163;">(</span>sieve even? <span style="color: #2d9574;">(</span>range <span style="color: #4e3163;">9</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; (0 2 4 6 8)</span>
+
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">vs.</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">sieve</span>
+  <span style="color: #6c3163;">[</span>p xs<span style="color: #6c3163;">]</span>
+  <span style="color: #6c3163;">{</span><span style="color: #4e3163;">:true</span> <span style="color: #2d9574;">(</span>filter p xs<span style="color: #2d9574;">)</span> <span style="color: #4e3163;">:false</span> <span style="color: #2d9574;">(</span>remove p xs<span style="color: #2d9574;">)</span><span style="color: #6c3163;">}</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #4e3163;">:true</span> <span style="color: #6c3163;">(</span>sieve even? <span style="color: #2d9574;">(</span>range <span style="color: #4e3163;">9</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; (0 2 4 6 8)</span>
+</pre>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgca7e66d" class="outline-2">
+<h2 id="orgca7e66d">Afterword</h2>
+<div class="outline-text-2" id="text-orgca7e66d">
+<p>
+This post and my advice are clearly opinionated. If you disagree with
+anything I've said, found a mistake, or think I missed important bits,
+feel free to shout at me on any of the social media platforms I'm on.
+</p>
+</div>
+</div>
