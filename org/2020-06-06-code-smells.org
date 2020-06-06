@@ -35,7 +35,7 @@ Happy hacking.
 
    #+begin_src clojure
      ;;; Don't                       Do
-     (apply concat (map f xs))  =>  (mapcat xs)
+     (apply concat (map f xs))  =>  (mapcat f xs)
    #+end_src
 
 ** What Is It For?

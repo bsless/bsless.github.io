@@ -43,7 +43,7 @@ is an idiomatic option for this case:
 
 <div class="org-src-container">
 <pre class="src src-clojure"><span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Don't                       Do</span>
-<span style="color: #3a81c3;">(</span>apply concat <span style="color: #6c3163;">(</span>map f xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>mapcat xs<span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span>apply concat <span style="color: #6c3163;">(</span>map f xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>  =&gt;  <span style="color: #3a81c3;">(</span>mapcat f xs<span style="color: #3a81c3;">)</span>
 </pre>
 </div>
 </div>
