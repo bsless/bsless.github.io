@@ -85,7 +85,19 @@ Happy hacking.
    #+end_src
    
    Instead, index the collection according to the parameter which
-   interests you:
+   interests you.
+
+   With ~group-by~:
+   
+   #+begin_src clojure
+     (def collected-people
+       (group-by :person/name people))
+
+     (contains? collected-people "Fred");; => true
+     (contains? collected-people "Bob") ;; => false
+   #+end_src
+   
+   With ~clojure.set/index~:
    
    #+begin_src clojure
      (def collected-people
@@ -97,23 +109,12 @@ Happy hacking.
    
    This code is readable: "Does ~collected-people~ contain a person
    who's name is Bob?".
-
-   You can also index it yourself:
-   #+begin_src clojure
-     (defn index
-       [xs k]
-       (reduce
-        (fn [m x]
-          (let [ik (get x k)]
-            (assoc m ik (conj (get m ik #{}) x)))) {} xs))
-
-     (def collected-people
-       (index people :person/name))
-
-     (contains? collected-people "Fred");; => true
-     (contains? collected-people "Bob") ;; => false
-   #+end_src
    
+   An important distinction between group-by and index is that index's
+   behavior is undefined when not dealing with sets. (Thanks to [[https://twitter.com/wagjo][Jozef
+   Wagner]] for pointing this out). If you're not working with sets, you
+   might lose information!
+
    If you repeatedly filter according to certain attributes, you might
    want to index according to them, too, with ~group-by~ or
    ~clojure.set/index~.

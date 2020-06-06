@@ -116,7 +116,24 @@ telling you it wants to be associative, not sequential:
 
 <p>
 Instead, index the collection according to the parameter which
-interests you:
+interests you.
+</p>
+
+<p>
+With <code>group-by</code>:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">collected-people</span>
+  <span style="color: #6c3163;">(</span>group-by <span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">person</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">name</span> people<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>contains? collected-people <span style="color: #2d9574;">"Fred"</span><span style="color: #3a81c3;">)</span><span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; true</span>
+<span style="color: #3a81c3;">(</span>contains? collected-people <span style="color: #2d9574;">"Bob"</span><span style="color: #3a81c3;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; false</span>
+</pre>
+</div>
+
+<p>
+With <code>clojure.set/index</code>:
 </p>
 
 <div class="org-src-container">
@@ -134,23 +151,11 @@ who's name is Bob?".
 </p>
 
 <p>
-You can also index it yourself:
+An important distinction between group-by and index is that index's
+behavior is undefined when not dealing with sets. (Thanks to <a href="https://twitter.com/wagjo">Jozef
+Wagner</a> for pointing this out). If you're not working with sets, you
+might lose information!
 </p>
-<div class="org-src-container">
-<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defn</span> <span style="color: #6c3163; font-weight: bold;">index</span>
-  <span style="color: #6c3163;">[</span>xs k<span style="color: #6c3163;">]</span>
-  <span style="color: #6c3163;">(</span>reduce
-   <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #67b11d;">[</span>m x<span style="color: #67b11d;">]</span>
-     <span style="color: #67b11d;">(</span><span style="color: #3a81c3; font-weight: bold;">let</span> <span style="color: #b1951d;">[</span>ik <span style="color: #3a81c3;">(</span>get x k<span style="color: #3a81c3;">)</span><span style="color: #b1951d;">]</span>
-       <span style="color: #b1951d;">(</span>assoc m ik <span style="color: #3a81c3;">(</span>conj <span style="color: #6c3163;">(</span>get m ik #<span style="color: #2d9574;">{}</span><span style="color: #6c3163;">)</span> x<span style="color: #3a81c3;">)</span><span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span> <span style="color: #2d9574;">{}</span> xs<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
-
-<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">collected-people</span>
-  <span style="color: #6c3163;">(</span>index people <span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">person</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">name</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
-
-<span style="color: #3a81c3;">(</span>contains? collected-people <span style="color: #2d9574;">"Fred"</span><span style="color: #3a81c3;">)</span><span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; true</span>
-<span style="color: #3a81c3;">(</span>contains? collected-people <span style="color: #2d9574;">"Bob"</span><span style="color: #3a81c3;">)</span> <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; false</span>
-</pre>
-</div>
 
 <p>
 If you repeatedly filter according to certain attributes, you might
