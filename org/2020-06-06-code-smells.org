@@ -261,7 +261,7 @@ Happy hacking.
    [[https://www.youtube.com/watch?v=3SSHjKT3ZmA][this talk]].
    
    Keep in mind while reading the following sections that using ~merge~
-   and ~select-keys~ come at a price. While the general advice is to
+   and ~select-keys~ comes at a price. While the general advice is to
    avoid doing things manually, every rule has an exception.
    
    Be aware there are [[https://github.com/bsless/clj-fast][alternatives]] as well, but ~merge~ still performs
