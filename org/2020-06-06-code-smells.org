@@ -144,7 +144,7 @@ Happy hacking.
     (first (first xs)) =>  (ffirst xs)
     (first (next xs))  =>  (fnext xs)
     (next (first xs))  =>  (nfirst xs)
-    (next (next xs))   =>  (nnirst xs)
+    (next (next xs))   =>  (nnext xs)
   #+end_src
 
   Sort of like ~cadr~ but makes more sense.
