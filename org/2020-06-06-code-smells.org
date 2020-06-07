@@ -346,6 +346,10 @@ Happy hacking.
      (> x 0)  =>  (pos? x)
      (< x 0)  =>  (neg? x)
    #+end_src
+   
+   Small warning regarding ~zero?~: It expects its argument to be a
+   number and will throw otherwise. Checking for equality to 0 is more
+   permissive.
 
 ** One Away
 
