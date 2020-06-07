@@ -143,7 +143,7 @@ Happy hacking.
   #+begin_src clojure
     ;;; Don't               Do
     (first (first xs)) =>  (ffirst xs)
-    (first (next xs))  =>  (fnext xs)
+    (first (next xs))  =>  (fnext xs) or (second xs)
     (next (first xs))  =>  (nfirst xs)
     (next (next xs))   =>  (nnext xs)
   #+end_src
