@@ -1,0 +1,331 @@
+#+TITLE: Transducers From The Ground Up
+
+#+OPTIONS: toc:nil num:nil
+#+BEGIN_EXPORT html
+---
+layout: post
+title: "Transducers From The Ground Up"
+permalink: /:title/
+tags: [clojure, transducers, "side effects", performance, "idiomatic clojure"]
+categories: [clojure, transducers, "side effects", "idiomatic clojure"]
+---
+#+END_EXPORT
+
+It is not an exaggeration to say transducers are the greatest thing
+since sliced bread. They open up new frontiers of performance and
+composition.
+
+In this series, we'll take a deep look at transducers. We'll derive them
+naturally from existing concepts, see the wide variety of use cases in
+which they apply, and how much performance we gain thereby.
+
+Hope you brought your swimming trunks, we're going on a deep dive.
+
+
+* Reducing Like It's 1979
+
+  Remember this book?
+
+  [[../assets/img/SICP_cover.jpg]]
+
+  If you've been hanging long enough around programmers, you've probably
+  met one who swears up and down by it. "It changed my life, dude!".
+
+  I can't very well argue with that because it changed mine, too, but
+  instead of getting biographical, let's have a crack at one of my
+  favorite exercises in the book: implementing ~reduce~:
+
+  We'll only implement [[https://en.wikipedia.org/wiki/Fold_(higher-order_function)#Linear_folds][foldl]] here. Skip to the [[Appendix][appendix]] for an
+  implementation of foldr if you're interested.
+
+  #+begin_src clojure
+    (defn -reduce
+      [f init coll]
+      (if-let [s  (seq coll)]
+        (recur f (f init (first s)) (rest s))
+        init))
+
+    (-reduce conj [] [1 2 3]) ;; => [1 2 3]
+    (-reduce + 0 [1 2 3]) ;; => 6
+  #+end_src
+  
+  In general, the function ~reduce~ takes has to have the following
+  signature:
+
+  #+begin_src clojure
+    (fn rf [accum x] ...) ;; returns new accum
+  #+end_src
+  
+  We dub it ~rf~ for reducing function.
+
+* Standing On The Shoulders Of Reducers
+
+  Now that we have implemented ~reduce~, how about we implement ~map~?
+
+  #+begin_src clojure
+    (defn -map
+      [f init coll]
+      (if-let [s (seq coll)]
+        (recur f (conj init (f (first s))) (rest s))
+        init))
+
+    (-map inc [] (range 3)) ;; => [1 2 3]
+  #+end_src
+
+  Nice. It works. It also looks very similar to ~reduce~. So similar in
+  fact, that we can factor out the differences and implement ~map~ with
+  ~reduce~:
+
+  #+begin_src clojure
+    (defn -map
+      [f init coll]
+      (-reduce (fn [init x] (conj init (f x))) init coll))
+
+    (-map inc [] (range 3)) ;; => [1 2 3]
+  #+end_src
+
+  That actually worked. But what does it mean?
+
+  Let's take a deeper look at the function we pass to reduce. It's only
+  a function of ~f~. We can factor it out as well:
+
+  #+begin_src clojure
+    (defn -mapper
+      [f]
+      (fn [init x] (conj init (f x))))
+
+    (defn -map
+      [f init coll]
+      (-reduce (-mapper f) init coll))
+
+    (-map inc [] (range 3)) ;; => [1 2 3]
+  #+end_src
+
+  There's only one problem left with our ~mapper~. It might not look
+  like a problem, but it's there. If you cannot guess, it's the only
+  concretion left in ~mapper~. What happens if we factor that one out?
+  How do we treat it? What is the purpose of ~conj~?
+
+  ~conj~ is a combiner, or an accumulating function. Let's factor it out
+  as ~rf~:
+
+  #+begin_src clojure
+    (defn -mapper
+      [f]
+      (fn [rf]
+        (fn [accum x] (rf accum (f x)))))
+
+    (defn -map
+      [f init coll]
+      (-reduce ((-mapper f) conj) init coll))
+
+    (-map inc [] (range 3)) ;; => [1 2 3]
+  #+end_src
+
+  Now we've made something interesting. It just looks even more
+  complicated. Suddenly ~conj~ looks more and more out of place. What
+  happens if we pull it out even further?
+
+  #+begin_src clojure
+    (defn -mapper
+      [f]
+      (fn [rf]
+        (fn [accum x] (rf accum (f x)))))
+
+    (defn -map
+      [f init coll]
+      (fn [rf]
+        (-reduce ((-mapper f) rf) init coll)))
+
+    ((-map inc [] (range 3)) conj) ;; => [1 2 3]
+    ((-map inc 0 (range 3)) +) ;; => 6
+
+    ;;; Alternatively
+
+    (-reduce ((-mapper inc) conj) [] (range 3)) ;; => [1 2 3]
+    (-reduce ((-mapper inc) +) 0 (range 3)) ;; => 6
+  #+end_src
+
+  Hold up. That illegal.
+
+  Or is it? Let's take a look and understand what we did here: we have
+  completely separated the behavior of mapping over a sequence, from the
+  behavior of accumulating the results of the mapping into something.
+
+  There's some magic to it, but we can actually do it with every
+  function which can be implemented with reduce. There's also a nice
+  equivalence between functions that can be implemented with reduce and
+  with a loop, so everything you can think of that can be implemented by
+  one of those, can turn into a function changes the behavior of a
+  reducing process. Transforms it. A trans-ducer.
+
+  Finally, we can derive our very own transduce:
+
+  #+begin_src clojure
+    (defn -transduce
+      [xf rf init coll]
+      (-reduce (xf rf) init coll))
+  #+end_src
+
+* Do these things even compose?
+
+  Let's see what happens when we compose two mappers:
+
+  #+begin_src clojure
+    (defn -mapper
+      [f]
+      (fn [rf]
+        (fn [accum x] (rf accum (f x)))))
+
+    ((-mapper f) rf)
+    ;; =>
+    (fn [accum x] (rf accum (f x)))
+    ((-mapper g) *1)
+    ;; =>
+    (fn [accum x] ((fn [accum' x'] (rf accum' (f x'))) accum (g x)))
+    ;; =>
+    (fn [accum x] (rf accum (f (g x))))
+    ;; =>
+    ((comp
+      (-mapper g)
+      (-mapper f))
+     rf)
+    ==
+    ((-mapper (comp f g)) rf)
+  #+end_src
+
+  Now that's interesting. The order of composition of mappers is the
+  order of execution of mapped functions.
+
+  We have two questions to answer:
+  - Why is the execution order reversed relative to regular ~comp~?
+  - Why do they actually compose?
+
+** Reversed order
+
+   Let's interpret the ~comp~ body:
+
+   #+begin_src clojure
+     ((-mapper g) ((-mapper f) rf))
+   #+end_src
+
+   ~(-mapper g)~ takes a function as its argument. Looking at the
+   definition of ~mapper~, notice it will only be called *after* ~(g x)~
+   is evaluated. This is how ~g~ is called before ~f~.
+
+** Why do they compose?
+
+   Let's try to understand the type of ~mapper~.
+
+   We have a function which takes a function, returns a function of a
+   function. quite involved to write in words, so let's try to write the
+   type signatures:
+
+   #+begin_src haskell
+     f :: a -> b
+     mapper :: (a -> b) -> (rf -> (accum -> a -> accum))
+     rf :: accum -> a -> accum
+     --
+     mapper :: (a -> b) -> ((accum -> a -> accum) -> (accum' -> a' -> accum'))
+     mapper :: (a -> b) -> (rf -> rf')
+   #+end_src
+
+   By looking at the types and implementation we can start to make sense
+   of what mapper does. It takes a function, and returns a function
+   which, deep breath, takes a reducing function, and returns a modified
+   reducing function. The transformation encapsulates a computational
+   process.
+
+   That way, we can chain transducers on top of another to create a
+   computational chain, and only activate it in the end with a reducer.
+
+   A reducer is any function which accumulates an element into an
+   accumulator. ~+~ and ~conj~ both count as reducing functions. We
+   don't have to accumulate scalar values.
+
+* Appendix
+
+** foldr
+
+   #+begin_src clojure
+     (defn reduce-rec
+       [f init coll]
+       (if-let [s  (seq coll)]
+         (f (reduce-rec f init (rest coll)) (first s))
+         init))
+
+     (reduce-rec conj () [1 2 3])
+     ;; => (1 2 3)
+   #+end_src
+
+** filter
+
+   #+begin_src clojure
+     (defn filter-rec
+       ([pred coll]
+        (when-let [s (seq coll)]
+          (let [f (first s) r (rest s)]
+            (if (pred f)
+              (cons f (filter pred r))
+              (filter pred r))))))
+
+     (filter-rec even? (range 6))
+     ;; => (0 2 4)
+
+     (defn filter-iter
+       ([pred init coll]
+        (if-let [s (seq coll)]
+          (let [f (first s) r (rest s)]
+            (recur pred (if (pred f) (conj init f) init) r))
+          init)))
+
+     (filter-iter even? [] (range 6))
+     ;; => [0 2 4]
+
+     (defn filter-red
+       [pred]
+       (fn [init coll]
+         (fn [rf]
+           (reduce-iter
+            (fn [init x]
+              (if (pred x) (rf init x) init))
+            init
+            coll))))
+
+     (defn filterer
+       [pred]
+       (fn [init x]
+         (if (pred x) (conj init x) init)))
+
+     (defn filterer
+       [pred]
+       (fn [comb]
+         (fn [init x]
+           (if (pred x) (comb init x) init))))
+   #+end_src
+
+** core transducers implementation
+
+   #+begin_src clojure
+     (defn map-xf
+       ([f]
+        (fn [rf]
+          (fn
+            ([] (rf))
+            ([result] (rf result))
+            ([result input]
+             (rf result (f input)))
+            ([result input & inputs]
+             (rf result (apply f input inputs)))))))
+
+     (defn filter-xf
+       ([pred]
+        (fn [rf]
+          (fn
+            ([] (rf))
+            ([result] (rf result))
+            ([result input]
+             (if (pred input)
+               (rf result input)
+               result))))))
+   #+end_src
