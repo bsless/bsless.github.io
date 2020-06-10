@@ -11,8 +11,8 @@ categories: [clojure, transducers, "side effects", "idiomatic clojure"]
 ---
 #+END_EXPORT
 
-It is not an exaggeration to say transducers are the greatest thing
-since sliced bread. They open up new frontiers of performance and
+It is not an exaggeration to say [[https://clojure.org/reference/transducers][transducers]] are the greatest thing
+since sliced bread. They open up new frontiers in performance and
 composition.
 
 In this series, we'll take a deep look at transducers. We'll derive them
@@ -20,7 +20,6 @@ naturally from existing concepts, see the wide variety of use cases in
 which they apply, and how much performance we gain thereby.
 
 Hope you brought your swimming trunks, we're going on a deep dive.
-
 
 * Reducing Like It's 1979
 
@@ -32,8 +31,8 @@ Hope you brought your swimming trunks, we're going on a deep dive.
   met one who swears up and down by it. "It changed my life, dude!".
 
   I can't very well argue with that because it changed mine, too, but
-  instead of getting biographical, let's have a crack at one of my
-  favorite exercises in the book: implementing ~reduce~:
+  lest I get biographical, let's have a crack at one of my favorite
+  exercises in the book: implementing ~reduce~.
 
   We'll only implement [[https://en.wikipedia.org/wiki/Fold_(higher-order_function)#Linear_folds][foldl]] here. Skip to the [[Appendix][appendix]] for an
   implementation of foldr if you're interested.
@@ -48,19 +47,21 @@ Hope you brought your swimming trunks, we're going on a deep dive.
     (-reduce conj [] [1 2 3]) ;; => [1 2 3]
     (-reduce + 0 [1 2 3]) ;; => 6
   #+end_src
-  
-  In general, the function ~reduce~ takes has to have the following
-  signature:
+
+  In general, the function ~reduce~ takes has the following signature:
 
   #+begin_src clojure
     (fn rf [accum x] ...) ;; returns new accum
   #+end_src
-  
+
   We dub it ~rf~ for reducing function.
 
 * Standing On The Shoulders Of Reducers
 
   Now that we have implemented ~reduce~, how about we implement ~map~?
+
+  The following implementation is tail recursive, and requires
+  introducing a "state" variable, =init= in this example.
 
   #+begin_src clojure
     (defn -map
@@ -106,8 +107,15 @@ Hope you brought your swimming trunks, we're going on a deep dive.
   concretion left in ~mapper~. What happens if we factor that one out?
   How do we treat it? What is the purpose of ~conj~?
 
-  ~conj~ is a combiner, or an accumulating function. Let's factor it out
-  as ~rf~:
+  ~conj~ is a reducing function itself. Remember this example?
+
+  #+begin_src clojure
+    (-reduce conj [] [1 2 3]) ;; => [1 2 3]
+  #+end_src
+
+  ~conj~ is just a function which takes an aggregate value and an
+  element, and adds the element to the aggregate. Let's factor it out as
+  ~rf~:
 
   #+begin_src clojure
     (defn -mapper
@@ -123,24 +131,15 @@ Hope you brought your swimming trunks, we're going on a deep dive.
   #+end_src
 
   Now we've made something interesting. It just looks even more
-  complicated. Suddenly ~conj~ looks more and more out of place. What
-  happens if we pull it out even further?
+  complicated.
+
+  Let's drop ~map~ for a while and remain in a reducing context:
 
   #+begin_src clojure
     (defn -mapper
       [f]
       (fn [rf]
         (fn [accum x] (rf accum (f x)))))
-
-    (defn -map
-      [f init coll]
-      (fn [rf]
-        (-reduce ((-mapper f) rf) init coll)))
-
-    ((-map inc [] (range 3)) conj) ;; => [1 2 3]
-    ((-map inc 0 (range 3)) +) ;; => 6
-
-    ;;; Alternatively
 
     (-reduce ((-mapper inc) conj) [] (range 3)) ;; => [1 2 3]
     (-reduce ((-mapper inc) +) 0 (range 3)) ;; => 6
@@ -149,15 +148,16 @@ Hope you brought your swimming trunks, we're going on a deep dive.
   Hold up. That illegal.
 
   Or is it? Let's take a look and understand what we did here: we have
-  completely separated the behavior of mapping over a sequence, from the
-  behavior of accumulating the results of the mapping into something.
+  completely separated the behavior of *mapping* over a sequence, from
+  the behavior of *accumulating* the results of the mapping into
+  something.
 
   There's some magic to it, but we can actually do it with every
   function which can be implemented with reduce. There's also a nice
   equivalence between functions that can be implemented with reduce and
-  with a loop, so everything you can think of that can be implemented by
-  one of those, can turn into a function changes the behavior of a
-  reducing process. Transforms it. A trans-ducer.
+  with a loop, so every function you can think of that can be
+  implemented by one of those, can turn into a function which changes
+  the behavior of a reducing process. Transforms it. A trans-ducer.
 
   Finally, we can derive our very own transduce:
 
@@ -242,6 +242,35 @@ Hope you brought your swimming trunks, we're going on a deep dive.
    A reducer is any function which accumulates an element into an
    accumulator. ~+~ and ~conj~ both count as reducing functions. We
    don't have to accumulate scalar values.
+
+* Landing Back In The Land Of Clojure
+
+  We have reached the end of the first part.
+
+  Up until now, we have rolled our own. Let's tie the work we have done
+  here to the Clojure APIs, naming conventions, and usage:
+
+  - ~rf~: some reducing function
+  - ~xf~: some transducer
+  - composition: ~(comp xf1 xf2)~ returns a new transducer which
+    executes from *left to right*.
+  - application: ~(xf rf)~ returns a new reducing function.
+
+  A short list of functions with new arities (as of Clojure 1.7) which
+  return or consume transducers:
+  - returns transducer: cat, dedupe, distinct, drop, drop-while, filter,
+    halt-when, interpose, keep, keep-indexed, map, map-indexed, mapcat,
+    partition-all, partition-by, random-sample, remove, replace, take,
+    take-nth, take-while
+  - consume transducers: sequence, into.
+
+  Moreover, the following two functions have been added: eduction and transduce.
+
+  Now that we have laid down the theoretical foundations for
+  understanding transduscers, we can continue on the next post to see
+  them in practice.
+
+  Happy hacking
 
 * Appendix
 
