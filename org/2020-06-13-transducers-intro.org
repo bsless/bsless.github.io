@@ -135,6 +135,9 @@ Hope you brought your swimming trunks, we're going on a deep dive.
   Now we've made something interesting. It just looks even more
   complicated.
 
+  I also performed a slight of hand and renamed ~init~ to ~accum~ to
+  fully embed us in the context of reducing functions.
+
   Let's drop ~map~ for a while and remain in a reducing context:
 
   #+begin_src clojure
