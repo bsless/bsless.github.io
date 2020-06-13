@@ -6,8 +6,8 @@
 layout: post
 title: "Transducers From The Ground Up"
 permalink: /:title/
-tags: [clojure, transducers, "side effects", performance, "idiomatic clojure"]
-categories: [clojure, transducers, "side effects", "idiomatic clojure"]
+tags: [clojure, transducers, "functional programming"]
+categories: [clojure, transducers, "functional programming"]
 ---
 #+END_EXPORT
 
