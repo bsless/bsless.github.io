@@ -19,6 +19,9 @@ In this series, we'll take a deep look at transducers. We'll derive them
 naturally from existing concepts, see the wide variety of use cases in
 which they apply, and how much performance we gain thereby.
 
+All the examples in this post work in the REPL. I recommend keeping one
+open and following along, especially if you're starting to feel lost.
+
 Hope you brought your swimming trunks, we're going on a deep dive.
 
 * Reducing Like It's 1979
@@ -103,9 +106,8 @@ Hope you brought your swimming trunks, we're going on a deep dive.
   #+end_src
 
   There's only one problem left with our ~mapper~. It might not look
-  like a problem, but it's there. If you cannot guess, it's the only
-  concretion left in ~mapper~. What happens if we factor that one out?
-  How do we treat it? What is the purpose of ~conj~?
+  like a problem, but it's there: Its behavior is still concreted via
+  ~conj~. What is its purpose?
 
   ~conj~ is a reducing function itself. Remember this example?
 
@@ -270,6 +272,8 @@ Hope you brought your swimming trunks, we're going on a deep dive.
   understanding transduscers, we can continue on the next post to see
   them in practice.
 
+  Any correction and all feedback are always welcome.
+
   Happy hacking
 
 * Appendix
@@ -335,6 +339,9 @@ Hope you brought your swimming trunks, we're going on a deep dive.
 
 ** core transducers implementation
 
+   The complete core transducer API has three arities for the returned
+   reducing function:
+
    #+begin_src clojure
      (defn map-xf
        ([f]
@@ -358,3 +365,10 @@ Hope you brought your swimming trunks, we're going on a deep dive.
                (rf result input)
                result))))))
    #+end_src
+
+* Acknowledgment
+
+  There has already been a post called Transducers From The Ground Up by
+  Uswitch Labs. That post is unfortunately gone and is only found on
+  archiving websites. This isn't a reprint, but my personal take on the
+  subject.
