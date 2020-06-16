@@ -174,7 +174,10 @@ Hope you brought your swimming trunks, we're going on a deep dive.
 
 * Do these things even compose?
 
-  Let's see what happens when we compose two mappers:
+  Let's see what happens when we compose two mappers.
+
+  Since Clojure is functional, we can use simple substitution (no need
+  to eval the next section in the REPL):
 
   #+begin_src clojure
     (defn -mapper
@@ -263,11 +266,12 @@ Hope you brought your swimming trunks, we're going on a deep dive.
 
   A short list of functions with new arities (as of Clojure 1.7) which
   return or consume transducers:
-  - returns transducer: cat, dedupe, distinct, drop, drop-while, filter,
+  - returns transducer: dedupe, distinct, drop, drop-while, filter,
     halt-when, interpose, keep, keep-indexed, map, map-indexed, mapcat,
     partition-all, partition-by, random-sample, remove, replace, take,
     take-nth, take-while
   - consume transducers: sequence, into.
+  - is a transducer: cat
 
   Moreover, the following two functions have been added: eduction and transduce.
 
@@ -375,3 +379,7 @@ Hope you brought your swimming trunks, we're going on a deep dive.
   Uswitch Labs. That post is unfortunately gone and is only found on
   archiving websites. This isn't a reprint, but my personal take on the
   subject.
+
+  Other tutorials worth looking at:
+  - [[https://bendyworks.com/blog/transducers-clojures-next-big-idea][Transducers: Clojure's Next Big Idea]]
+  - [[http://elbenshira.com/blog/understanding-transducers/][Understanding Transducers]]
