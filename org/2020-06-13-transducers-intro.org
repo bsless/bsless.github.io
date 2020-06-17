@@ -150,7 +150,7 @@ Hope you brought your swimming trunks, we're going on a deep dive.
     (-reduce ((-mapper inc) +) 0 (range 3)) ;; => 6
   #+end_src
 
-  Hold up. That illegal.
+  Hold up. That's illegal.
 
   Or is it? Let's take a look and understand what we did here: we have
   completely separated the behavior of *mapping* over a sequence, from
@@ -174,32 +174,61 @@ Hope you brought your swimming trunks, we're going on a deep dive.
 
 * Do these things even compose?
 
-  Let's see what happens when we compose two mappers.
+  Since Clojure is functional, we can use simple substitution, no need
+  to eval the next section in the REPL. I use the REPL ~;; =>~ output
+  prompt symbol as a visual line-break. Every stage is an expansion of
+  the previous one or function application.
 
-  Since Clojure is functional, we can use simple substitution (no need
-  to eval the next section in the REPL):
+  We want to see what's the result of composing two mappers:
+
+  #+begin_src clojure
+    (comp (-mapper g) (-mapper f))
+  #+end_src
+
+  Remember the definition of ~-mapper~:
 
   #+begin_src clojure
     (defn -mapper
       [f]
       (fn [rf]
         (fn [accum x] (rf accum (f x)))))
+  #+end_src
 
+  Transducers are applied to reducing functions. Let's substitute the
+  definition and apply it:
+
+  #+begin_src clojure
     ((-mapper f) rf)
     ;; =>
     (fn [accum x] (rf accum (f x)))
-    ((-mapper g) *1)
+  #+end_src
+
+  Let's now apply a second mapper to it:
+
+  #+begin_src clojure
+    ((-mapper g) ((-mapper f) rf))
     ;; =>
+    (fn [accum x] ((fn [accum' x'] (rf accum' (f x'))) accum (g x)))
+  #+end_src
+
+  Apply the internal function, compose ~f~ and ~g~ and extract a mapper:
+
+  #+begin_src clojure
     (fn [accum x] ((fn [accum' x'] (rf accum' (f x'))) accum (g x)))
     ;; =>
     (fn [accum x] (rf accum (f (g x))))
     ;; =>
-    ((comp
-      (-mapper g)
-      (-mapper f))
-     rf)
-    ==
+    (fn [accum x] (rf accum ((comp f g) x)))
+    ;; =>
     ((-mapper (comp f g)) rf)
+  #+end_src
+
+  Finally:
+
+  #+begin_src clojure
+    ((-mapper (comp f g)) rf) == ((comp (-mapper g) (-mapper f)) rf)
+    ;; =>
+    (-mapper (comp f g)) == (comp (-mapper g) (-mapper f))
   #+end_src
 
   Now that's interesting. The order of composition of mappers is the

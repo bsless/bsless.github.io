@@ -204,7 +204,7 @@ Let's drop <code>map</code> for a while and remain in a reducing context:
 </div>
 
 <p>
-Hold up. That illegal.
+Hold up. That's illegal.
 </p>
 
 <p>
@@ -240,12 +240,23 @@ Finally, we can derive our very own transduce:
 <h2 id="org2c7cfa2">Do these things even compose?</h2>
 <div class="outline-text-2" id="text-org2c7cfa2">
 <p>
-Let's see what happens when we compose two mappers.
+Since Clojure is functional, we can use simple substitution, no need
+to eval the next section in the REPL. I use the REPL <code>;; =&gt;</code> output
+prompt symbol as a visual line-break. Every stage is an expansion of
+the previous one or function application.
 </p>
 
 <p>
-Since Clojure is functional, we can use simple substitution (no need
-to eval the next section in the REPL):
+We want to see what's the result of composing two mappers:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>comp <span style="color: #6c3163;">(</span>-mapper g<span style="color: #6c3163;">)</span> <span style="color: #6c3163;">(</span>-mapper f<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Remember the definition of <code>-mapper</code>:
 </p>
 
 <div class="org-src-container">
@@ -253,22 +264,55 @@ to eval the next section in the REPL):
   <span style="color: #6c3163;">[</span>f<span style="color: #6c3163;">]</span>
   <span style="color: #6c3163;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #2d9574;">[</span>rf<span style="color: #2d9574;">]</span>
     <span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #67b11d;">[</span>accum x<span style="color: #67b11d;">]</span> <span style="color: #67b11d;">(</span>rf accum <span style="color: #b1951d;">(</span>f x<span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
 
-<span style="color: #3a81c3;">(</span><span style="color: #6c3163;">(</span>-mapper f<span style="color: #6c3163;">)</span> rf<span style="color: #3a81c3;">)</span>
+<p>
+Transducers are applied to reducing functions. Let's substitute the
+definition and apply it:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #6c3163;">(</span>-mapper f<span style="color: #6c3163;">)</span> rf<span style="color: #3a81c3;">)</span>
 <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt;</span>
 <span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163;">[</span>accum x<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>rf accum <span style="color: #2d9574;">(</span>f x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
-<span style="color: #3a81c3;">(</span><span style="color: #6c3163;">(</span>-mapper g<span style="color: #6c3163;">)</span> <span style="color: #3a81c3;">*1</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Let's now apply a second mapper to it:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #6c3163;">(</span>-mapper g<span style="color: #6c3163;">)</span> <span style="color: #6c3163;">(</span><span style="color: #2d9574;">(</span>-mapper f<span style="color: #2d9574;">)</span> rf<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
 <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt;</span>
 <span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163;">[</span>accum x<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span><span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #67b11d;">[</span>accum' x'<span style="color: #67b11d;">]</span> <span style="color: #67b11d;">(</span>rf accum' <span style="color: #b1951d;">(</span>f x'<span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span> accum <span style="color: #2d9574;">(</span>g x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Apply the internal function, compose <code>f</code> and <code>g</code> and extract a mapper:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163;">[</span>accum x<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span><span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #67b11d;">[</span>accum' x'<span style="color: #67b11d;">]</span> <span style="color: #67b11d;">(</span>rf accum' <span style="color: #b1951d;">(</span>f x'<span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span> accum <span style="color: #2d9574;">(</span>g x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
 <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt;</span>
-<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163;">[</span>accum x<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>rf accum <span style="color: #2d9574;">(</span>f <span style="color: #67b11d;">(</span>g x<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163;">[</span>accum x<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>rf accum <span style="color: #2d9574;">(</span>f <span style="color: #67b11d;">(</span>g x<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span> 
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; </span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163;">[</span>accum x<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>rf accum <span style="color: #2d9574;">(</span><span style="color: #67b11d;">(</span>comp f g<span style="color: #67b11d;">)</span> x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
 <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt;</span>
-<span style="color: #3a81c3;">(</span><span style="color: #6c3163;">(</span>comp
-  <span style="color: #2d9574;">(</span>-mapper g<span style="color: #2d9574;">)</span>
-  <span style="color: #2d9574;">(</span>-mapper f<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span>
- rf<span style="color: #3a81c3;">)</span>
-==
 <span style="color: #3a81c3;">(</span><span style="color: #6c3163;">(</span>-mapper <span style="color: #2d9574;">(</span>comp f g<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span> rf<span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Finally:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #6c3163;">(</span>-mapper <span style="color: #2d9574;">(</span>comp f g<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span> rf<span style="color: #3a81c3;">)</span> == <span style="color: #3a81c3;">(</span><span style="color: #6c3163;">(</span>comp <span style="color: #2d9574;">(</span>-mapper g<span style="color: #2d9574;">)</span> <span style="color: #2d9574;">(</span>-mapper f<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span> rf<span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt;</span>
+<span style="color: #3a81c3;">(</span>-mapper <span style="color: #6c3163;">(</span>comp f g<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span> == <span style="color: #3a81c3;">(</span>comp <span style="color: #6c3163;">(</span>-mapper g<span style="color: #6c3163;">)</span> <span style="color: #6c3163;">(</span>-mapper f<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
 </pre>
 </div>
 
