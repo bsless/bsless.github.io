@@ -405,9 +405,10 @@ Hope you brought your swimming trunks, we're going on a deep dive.
 * Acknowledgment
 
   There has already been a post called Transducers From The Ground Up by
-  Uswitch Labs. That post is unfortunately gone and is only found on
-  archiving websites. This isn't a reprint, but my personal take on the
-  subject.
+  Uswitch Labs. +That post is unfortunately gone and is only found on
+  archiving websites+. [[https://reborg.net/post/621211973722472448/clojure-transducers-from-the-ground-up-the][Republished!]]
+
+  This isn't a reprint, but my personal take on the subject.
 
   Other tutorials worth looking at:
   - [[https://bendyworks.com/blog/transducers-clojures-next-big-idea][Transducers: Clojure's Next Big Idea]]

@@ -297,8 +297,8 @@ Apply the internal function, compose <code>f</code> and <code>g</code> and extra
 <div class="org-src-container">
 <pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163;">[</span>accum x<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span><span style="color: #2d9574;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #67b11d;">[</span>accum' x'<span style="color: #67b11d;">]</span> <span style="color: #67b11d;">(</span>rf accum' <span style="color: #b1951d;">(</span>f x'<span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span> accum <span style="color: #2d9574;">(</span>g x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
 <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt;</span>
-<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163;">[</span>accum x<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>rf accum <span style="color: #2d9574;">(</span>f <span style="color: #67b11d;">(</span>g x<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span> 
-<span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt; </span>
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163;">[</span>accum x<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>rf accum <span style="color: #2d9574;">(</span>f <span style="color: #67b11d;">(</span>g x<span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt;</span>
 <span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">fn</span> <span style="color: #6c3163;">[</span>accum x<span style="color: #6c3163;">]</span> <span style="color: #6c3163;">(</span>rf accum <span style="color: #2d9574;">(</span><span style="color: #67b11d;">(</span>comp f g<span style="color: #67b11d;">)</span> x<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
 <span style="color: #2aa1ae; background-color: #ecf3ec;">;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">=&gt;</span>
 <span style="color: #3a81c3;">(</span><span style="color: #6c3163;">(</span>-mapper <span style="color: #2d9574;">(</span>comp f g<span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span> rf<span style="color: #3a81c3;">)</span>
@@ -560,9 +560,12 @@ reducing function:
 <div class="outline-text-2" id="text-orgbaa0340">
 <p>
 There has already been a post called Transducers From The Ground Up by
-Uswitch Labs. That post is unfortunately gone and is only found on
-archiving websites. This isn't a reprint, but my personal take on the
-subject.
+Uswitch Labs. <del>That post is unfortunately gone and is only found on
+archiving websites</del>. <a href="https://reborg.net/post/621211973722472448/clojure-transducers-from-the-ground-up-the">Republished!</a>
+</p>
+
+<p>
+This isn't a reprint, but my personal take on the subject.
 </p>
 
 <p>
