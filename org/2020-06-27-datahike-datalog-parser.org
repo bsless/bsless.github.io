@@ -1,0 +1,199 @@
+#+TITLE: How I Sped Up Datahike's Datalog Parser 30x
+
+#+OPTIONS: toc:nil num:nil
+#+BEGIN_EXPORT html
+---
+layout: post
+title: "How I Sped Up Datahike's Datalog Parser 30x"
+permalink: /:title/
+tags: [clojure, "idiomatic clojure" , performance]
+categories: [clojure, "idiomatic clojure", performance]
+---
+#+END_EXPORT
+
+[[https://github.com/replikativ/datahike][Datahike]] is a durable database powered by an efficient Datalog query
+engine. It started as a fork of [[https://github.com/tonsky/DataScript][DataScript]] and grew from there. It's an
+interesting project I've been following in the past few months with interest.
+
+My curiosity led me to a dive inside Datahike's Datalog parser. I've
+been wrangling with parsers for a while and have started to get a feel
+for them. I'm in no way an expert on the matter, but I've bumped into
+enough walls and stumbled on enough rocks to know they're there.
+
+This is a short illustrative example on how one line can devastatingly
+impact an application's performance.
+
+* Datalog? What's That?
+
+  Without getting too deep into the theory, [[https://en.wikipedia.org/wiki/Datalog][Datalog]] is a declarative
+  logical programming subset of Prolog which can often be used as a
+  query language for declarative databases, such as the case in this post.
+
+  The particular Clojure implementation, originally conceived by Rich
+  Hickey in Datomic, represents queries as data structures:
+
+  #+begin_src clojure
+    (def q '[:find ?e
+             :in $ ?fname ?lname
+             :keys foo
+             :where
+             [?e :user/firstName ?fname]
+             [?e :user/lastName ?lname]])
+  #+end_src
+
+  The fine details of the data model are interesting, but out of this
+  post's scope. I recommend looking more into Datalog and what it has to
+  offer.
+
+* Profiling a Parser
+
+  The parser's entry point is ~datalog.parser/parse~. It extracts the
+  query elements then validates them.
+
+  When I want to get a feel of how a complex function behaves I usually
+  benchmark and profile it. When I benchmarked the parser for the sample
+  query, I got some surprising results:
+
+  #+begin_src clojure
+    (require '[criterium.core :as cc])
+    (cc/bench (parser/parse q))
+    ;;; Execution time mean : 1.787494 ms
+  #+end_src
+
+  What's surprising about these results is the parser is incredibly
+  slow.
+
+  It's true the parser uses a cache behind the scenes, but there's still
+  no reason it should take this long. It's still a major hit on the
+  first query, and makes the query parser non-viable for other usages,
+  such as static analysis (see Kondo).
+
+  That's when I profiled the query using [[https://github.com/clojure-goes-fast/clj-async-profiler][clj-async-profiler]] and saw
+  something familiar, which I've actually seen before:
+
+  #+begin_src clojure
+    (require '[clj-async-profiler.core :as prof])
+
+    (def reps 1e6)
+
+    (deftest profile
+      (prof/profile
+       (time
+        (dotimes [_ reps]
+          (parser/parse q)))))
+  #+end_src
+
+  [[../assets/img/parse-satisfies.svg]]
+
+  Feel free to use the search functionality in the upper right hand side
+  of the SVG. Search for ~satisfies~. What you'll find is that the
+  ~parse~ function spends 95% of its CPU time calling ~satisfies~.
+
+  What is ~satisfies?~ and what does it do?
+
+* Handling The Null Case
+
+  When writing parsers, we need a way to specify our handling of the
+  null case, default behavior. Depending on our data model it can be
+  achieved in several ways.
+
+  The Datalog parser is implemented via protocols and records which
+  implement it:
+
+  #+begin_src clojure
+    (defprotocol ITraversable
+      (-collect      [_ pred acc])
+      (-collect-vars [_ acc])
+      (-postwalk     [_ f]))
+  #+end_src
+
+  This allows for fast invocation of the protocol functions on all
+  records which implement it, which is great. However, there is still a
+  need to know if a certain object is ~ITraversable~, for which one
+  usually writes a ~traversable?~ function, which looks like:
+
+  #+begin_src clojure
+    (def traversable? (partial satisfies? ITraversable))
+  #+end_src
+
+  This implementation is 100% correct and covers all use cases. The
+  problem with it is that ~satisfies?~ has terrible performance, making
+  it a poor choice for code which sits on any hot path, as can be seen
+  in the flame graph above.
+
+  The reason ~satisfies?~ is so slow is it searches through all of an
+  object's ~supers~ with ~isAssignableFrom~ for one which implements the
+  protocol.
+
+  There's an [[https://clojure.atlassian.net/browse/CLJ-1814][open issue]] which addresses that, but even if it gets fixed
+  in Clojure 1.11, everyone using a previous version won't benefit from
+  the speedup.
+
+  All solutions will eventually boil down to creating some sort of
+  registry which specifies which types satisfy ~ITraversable~ and a
+  default case, but the one presented here probably performs better than
+  multimethods or creating a sort of managed global state and managing
+  it ourselves.
+
+* Extend, Embrace, Satisfy
+
+  After reading [[https://www.ibm.com/developerworks/library/j-clojure-protocols/j-clojure-protocols-pdf.pdf][Solving The Expression Problem]] and [[https://download.clojure.org/papers/clojure-hopl-iv-final.pdf][Clojure's history]] I
+  got a sense that the right way to solve it was to let objects answer
+  the question themselves, instead of being external to them. It could
+  have been done by extending ~ITraversable~ or adding a new protocol, I
+  chose to add a new protocol which answers a simple question, is the
+  object traversable?
+
+  #+begin_src clojure
+    (defprotocol Traversable
+      (-traversable? [_]))
+  #+end_src
+
+  Then, add to every record definition:
+
+  #+begin_src clojure
+    p/Traversable
+    (-traversable? [_] true)
+  #+end_src
+
+  Luckily, the record definitions were already wrapped in a macro so I
+  needed to change only one place in the code.
+
+  Finally, we need to ensure that for every other type, ~-traversable?~
+  is false:
+
+  #+begin_src clojure
+    (extend-type #?(:clj Object :cljs object)
+      Traversable
+      (-traversable? [_] false))
+
+    (extend-type nil
+      Traversable
+      (-traversable? [_] false))
+  #+end_src
+
+* Dramatic Improvements
+
+  Running the same bench as before, we get the following results:
+
+  #+begin_src clojure
+    (require '[criterium.core :as cc])
+    (cc/bench (parser/parse q))
+    ;;; Execution time mean : 59.656711 µs
+    ;;; 1.787494e-3 / 59.656711e-6 ~ 30
+  #+end_src
+
+  By getting rid of ~satisfies?~ we sped the parser up 30x!
+
+  [[../assets/img/parse-protocol.svg]]
+
+  This doesn't and shouldn't reflect negatively on the code's authors.
+  The problem with ~satisfies?~ is that it's too damn convenient and
+  easy to use. In the past I've had the (mis)fortune of seeing it in a
+  production environment, which was my first tussle with it, also in a
+  parser of sorts. Lucky for us, it's very easy to get rid of, as you've
+  seen in this post.
+
+  Using solutions like caching do help alleviate the problem in long
+  running application's contexts, however, when used for ephemeral
+  processes like =clj-kondo= we can see great improvements.
