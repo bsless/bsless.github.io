@@ -1,0 +1,295 @@
+---
+layout: post
+title: "How I Sped Up Datahike's Datalog Parser 30x"
+permalink: /:title/
+tags: [clojure, "idiomatic clojure" , performance]
+categories: [clojure, "idiomatic clojure", performance]
+---
+
+<p>
+<a href="https://github.com/replikativ/datahike">Datahike</a> is a durable database powered by an efficient Datalog query
+engine. It started as a fork of <a href="https://github.com/tonsky/DataScript">DataScript</a> and grew from there. It's an
+interesting project I've been following in the past few months with interest.
+</p>
+
+<p>
+My curiosity led me to a dive inside Datahike's Datalog parser. I've
+been wrangling with parsers for a while and have started to get a feel
+for them. I'm in no way an expert on the matter, but I've bumped into
+enough walls and stumbled on enough rocks to know they're there.
+</p>
+
+<p>
+This is a short illustrative example on how one line can devastatingly
+impact an application's performance.
+</p>
+
+<div id="outline-container-orge8176e1" class="outline-2">
+<h2 id="orge8176e1">Datalog? What's That?</h2>
+<div class="outline-text-2" id="text-orge8176e1">
+<p>
+Without getting too deep into the theory, <a href="https://en.wikipedia.org/wiki/Datalog">Datalog</a> is a declarative
+logical programming subset of Prolog which can often be used as a
+query language for declarative databases, such as the case in this post.
+</p>
+
+<p>
+The particular Clojure implementation, originally conceived by Rich
+Hickey in Datomic, represents queries as data structures:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">q</span> '<span style="color: #6c3163;">[</span><span style="color: #4e3163;">:find</span> ?e
+         <span style="color: #4e3163;">:in</span> $ ?fname ?lname
+         <span style="color: #4e3163;">:keys</span> foo
+         <span style="color: #4e3163;">:where</span>
+         <span style="color: #2d9574;">[</span>?e <span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">user</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">firstName</span> ?fname<span style="color: #2d9574;">]</span>
+         <span style="color: #2d9574;">[</span>?e <span style="color: #4e3163;">:</span><span style="color: #ba2f59; font-weight: bold;">user</span><span style="color: #655370; background-color: #fbf8ef;">/</span><span style="color: #4e3163;">lastName</span> ?lname<span style="color: #2d9574;">]</span><span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+The fine details of the data model are interesting, but out of this
+post's scope. I recommend looking more into Datalog and what it has to
+offer.
+</p>
+</div>
+</div>
+
+<div id="outline-container-orge8f04bd" class="outline-2">
+<h2 id="orge8f04bd">Profiling a Parser</h2>
+<div class="outline-text-2" id="text-orge8f04bd">
+<p>
+The parser's entry point is <code>datalog.parser/parse</code>. It extracts the
+query elements then validates them.
+</p>
+
+<p>
+When I want to get a feel of how a complex function behaves I usually
+benchmark and profile it. When I benchmarked the parser for the sample
+query, I got some surprising results:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>require '<span style="color: #6c3163;">[</span>criterium.core <span style="color: #4e3163;">:as</span> cc<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">parser</span>/parse q<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 1.787494 ms</span>
+</pre>
+</div>
+
+<p>
+What's surprising about these results is the parser is incredibly
+slow.
+</p>
+
+<p>
+It's true the parser uses a cache behind the scenes, but there's still
+no reason it should take this long. It's still a major hit on the
+first query, and makes the query parser non-viable for other usages,
+such as static analysis (see Kondo).
+</p>
+
+<p>
+That's when I profiled the query using <a href="https://github.com/clojure-goes-fast/clj-async-profiler">clj-async-profiler</a> and saw
+something familiar, which I've actually seen before:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>require '<span style="color: #6c3163;">[</span>clj-async-profiler.core <span style="color: #4e3163;">:as</span> prof<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">reps</span> <span style="color: #4e3163;">1e6</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">deftest</span> <span style="color: #6c3163; font-weight: bold;">profile</span>
+  <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">prof</span>/profile
+   <span style="color: #2d9574;">(</span>time
+    <span style="color: #67b11d;">(</span><span style="color: #3a81c3; font-weight: bold;">dotimes</span> <span style="color: #b1951d;">[</span>_ reps<span style="color: #b1951d;">]</span>
+      <span style="color: #b1951d;">(</span><span style="color: #ba2f59; font-weight: bold;">parser</span>/parse q<span style="color: #b1951d;">)</span><span style="color: #67b11d;">)</span><span style="color: #2d9574;">)</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+
+<div class="figure">
+<p><object type="image/svg+xml" data="../assets/img/parse-satisfies.svg" class="org-svg">
+Sorry, your browser does not support SVG.</object>
+</p>
+</div>
+
+<p>
+Feel free to use the search functionality in the upper right hand side
+of the SVG. Search for <code>satisfies</code>. What you'll find is that the
+<code>parse</code> function spends 95% of its CPU time calling <code>satisfies</code>.
+</p>
+
+<p>
+What is <code>satisfies?</code> and what does it do?
+</p>
+</div>
+</div>
+
+<div id="outline-container-org8beabe9" class="outline-2">
+<h2 id="org8beabe9">Handling The Null Case</h2>
+<div class="outline-text-2" id="text-org8beabe9">
+<p>
+When writing parsers, we need a way to specify our handling of the
+null case, default behavior. Depending on our data model it can be
+achieved in several ways.
+</p>
+
+<p>
+The Datalog parser is implemented via protocols and records which
+implement it:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defprotocol</span> <span style="color: #ba2f59; font-weight: bold;">ITraversable</span>
+  <span style="color: #6c3163;">(</span>-collect      <span style="color: #2d9574;">[</span>_ pred acc<span style="color: #2d9574;">]</span><span style="color: #6c3163;">)</span>
+  <span style="color: #6c3163;">(</span>-collect-vars <span style="color: #2d9574;">[</span>_ acc<span style="color: #2d9574;">]</span><span style="color: #6c3163;">)</span>
+  <span style="color: #6c3163;">(</span>-postwalk     <span style="color: #2d9574;">[</span>_ f<span style="color: #2d9574;">]</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+This allows for fast invocation of the protocol functions on all
+records which implement it, which is great. However, there is still a
+need to know if a certain object is <code>ITraversable</code>, for which one
+usually writes a <code>traversable?</code> function, which looks like:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">def</span> <span style="color: #715ab1;">traversable?</span> <span style="color: #6c3163;">(</span>partial satisfies? ITraversable<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+This implementation is 100% correct and covers all use cases. The
+problem with it is that <code>satisfies?</code> has terrible performance, making
+it a poor choice for code which sits on any hot path, as can be seen
+in the flame graph above.
+</p>
+
+<p>
+The reason <code>satisfies?</code> is so slow is it searches through all of an
+object's <code>supers</code> with <code>isAssignableFrom</code> for one which implements the
+protocol.
+</p>
+
+<p>
+There's an <a href="https://clojure.atlassian.net/browse/CLJ-1814">open issue</a> which addresses that, but even if it gets fixed
+in Clojure 1.11, everyone using a previous version won't benefit from
+the speedup.
+</p>
+
+<p>
+All solutions will eventually boil down to creating some sort of
+registry which specifies which types satisfy <code>ITraversable</code> and a
+default case, but the one presented here probably performs better than
+multimethods or creating a sort of managed global state and managing
+it ourselves.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org2388f08" class="outline-2">
+<h2 id="org2388f08">Extend, Embrace, Satisfy</h2>
+<div class="outline-text-2" id="text-org2388f08">
+<p>
+After reading <a href="https://www.ibm.com/developerworks/library/j-clojure-protocols/j-clojure-protocols-pdf.pdf">Solving The Expression Problem</a> and <a href="https://download.clojure.org/papers/clojure-hopl-iv-final.pdf">Clojure's history</a> I
+got a sense that the right way to solve it was to let objects answer
+the question themselves, instead of being external to them. It could
+have been done by extending <code>ITraversable</code> or adding a new protocol, I
+chose to add a new protocol which answers a simple question, is the
+object traversable?
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span><span style="color: #3a81c3; font-weight: bold;">defprotocol</span> <span style="color: #ba2f59; font-weight: bold;">Traversable</span>
+  <span style="color: #6c3163;">(</span>-traversable? <span style="color: #2d9574;">[</span>_<span style="color: #2d9574;">]</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Then, add to every record definition:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #ba2f59; font-weight: bold;">p</span>/Traversable
+<span style="color: #3a81c3;">(</span>-traversable? <span style="color: #6c3163;">[</span>_<span style="color: #6c3163;">]</span> <span style="color: #4e3163;">true</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+
+<p>
+Luckily, the record definitions were already wrapped in a macro so I
+needed to change only one place in the code.
+</p>
+
+<p>
+Finally, we need to ensure that for every other type, <code>-traversable?</code>
+is false:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>extend-type #?<span style="color: #6c3163;">(</span><span style="color: #4e3163;">:clj</span> Object <span style="color: #4e3163;">:cljs</span> object<span style="color: #6c3163;">)</span>
+  Traversable
+  <span style="color: #6c3163;">(</span>-traversable? <span style="color: #2d9574;">[</span>_<span style="color: #2d9574;">]</span> <span style="color: #4e3163;">false</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+
+<span style="color: #3a81c3;">(</span>extend-type <span style="color: #4e3163;">nil</span>
+  Traversable
+  <span style="color: #6c3163;">(</span>-traversable? <span style="color: #2d9574;">[</span>_<span style="color: #2d9574;">]</span> <span style="color: #4e3163;">false</span><span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org8486609" class="outline-2">
+<h2 id="org8486609">Dramatic Improvements</h2>
+<div class="outline-text-2" id="text-org8486609">
+<p>
+Running the same bench as before, we get the following results:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-clojure"><span style="color: #3a81c3;">(</span>require '<span style="color: #6c3163;">[</span>criterium.core <span style="color: #4e3163;">:as</span> cc<span style="color: #6c3163;">]</span><span style="color: #3a81c3;">)</span>
+<span style="color: #3a81c3;">(</span><span style="color: #ba2f59; font-weight: bold;">cc</span>/bench <span style="color: #6c3163;">(</span><span style="color: #ba2f59; font-weight: bold;">parser</span>/parse q<span style="color: #6c3163;">)</span><span style="color: #3a81c3;">)</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">Execution time mean : 59.656711 &#181;s</span>
+<span style="color: #2aa1ae; background-color: #ecf3ec;">;;; </span><span style="color: #2aa1ae; background-color: #ecf3ec;">1.787494e-3 / 59.656711e-6 ~ 30</span>
+</pre>
+</div>
+
+<p>
+By getting rid of <code>satisfies?</code> we sped the parser up 30x!
+</p>
+
+
+<div class="figure">
+<p><object type="image/svg+xml" data="../assets/img/parse-protocol.svg" class="org-svg">
+Sorry, your browser does not support SVG.</object>
+</p>
+</div>
+
+<p>
+This doesn't and shouldn't reflect negatively on the code's authors.
+The problem with <code>satisfies?</code> is that it's too damn convenient and
+easy to use. In the past I've had the (mis)fortune of seeing it in a
+production environment, which was my first tussle with it, also in a
+parser of sorts. Lucky for us, it's very easy to get rid of, as you've
+seen in this post.
+</p>
+
+<p>
+Using solutions like caching do help alleviate the problem in long
+running application's contexts, however, when used for ephemeral
+processes like <code>clj-kondo</code> we can see great improvements.
+</p>
+</div>
+</div>
+
+<div id="outline-container-org3dc31b8" class="outline-2">
+<h2 id="org3dc31b8">Acknowledgments</h2>
+<div class="outline-text-2" id="text-org3dc31b8">
+<ul class="org-ul">
+<li>Nikita Prokopov, <a href="https://github.com/tonsky/DataScript">DataScript</a>.</li>
+<li>Konrad Kühne, Christian Weilbach and the rest of the <a href="https://github.com/replikativ/datahike">Datahike</a>
+contributors.</li>
+</ul>
+</div>
+</div>
