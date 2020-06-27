@@ -197,3 +197,9 @@ impact an application's performance.
   Using solutions like caching do help alleviate the problem in long
   running application's contexts, however, when used for ephemeral
   processes like =clj-kondo= we can see great improvements.
+
+* Acknowledgments
+  
+  - Nikita Prokopov, [[https://github.com/tonsky/DataScript][DataScript]].
+  - Konrad Kühne, Christian Weilbach and the rest of the [[https://github.com/replikativ/datahike][Datahike]]
+    contributors.
