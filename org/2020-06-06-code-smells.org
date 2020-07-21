@@ -355,8 +355,8 @@ Happy hacking.
 
    #+begin_src clojure
      ;;; Don't     Do
-     (+ 1 x)  =>  (inc x)
-     (- 1 x)  =>  (dec x)
+     (+ x 1)  =>  (inc x)
+     (- x 1)  =>  (dec x)
    #+end_src
 
 * Truth Be Told
